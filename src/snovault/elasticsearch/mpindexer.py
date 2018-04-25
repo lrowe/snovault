@@ -17,6 +17,7 @@ from .indexer import (
     Indexer,
 )
 from .interfaces import APP_FACTORY
+from .interfaces import ELASTIC_SEARCH
 
 log = logging.getLogger(__name__)
 
@@ -117,8 +118,8 @@ class MPIndexer(Indexer):
         self.processes = processes
         self.chunksize = int(registry.settings.get('indexer.chunk_size',1024))  # in production.ini (via buildout.cfg) as 1024
         self.initargs = (registry[APP_FACTORY], registry.settings,)
-        INDEX = request.registry.settings['snovault.elasticsearch.index']
-        self.es = request.registry[ELASTIC_SEARCH]
+        INDEX = registry.settings['snovault.elasticsearch.index']
+        self.es = registry[ELASTIC_SEARCH]
         self.es.index(index=INDEX, doc_type='meta', id='active_tasks', body={'active_tasks': [('testing')]})
 
     @reify
