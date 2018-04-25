@@ -117,7 +117,8 @@ class QueueIndexer(object):
         self.set_task_list([])
 
     def get_task_list(self):
-        return self.es.get(index=self.es_index_str, doc_type='meta', id='active_tasks').get('_source', {})
+        task_obj = self.es.get(index=self.es_index_str, doc_type='meta', id='active_tasks').get('_source', {})
+        return task_obj['active_tasks']
 
     def set_task_list(self, tasks):
         print('set tasks', str(len(tasks)))
