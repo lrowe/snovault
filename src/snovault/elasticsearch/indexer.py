@@ -114,6 +114,7 @@ def get_related_uuids(request, es, updated, renamed):
 
 @view_config(route_name='index', request_method='POST', permission="index")
 def index(request):
+    print('index')
     INDEX = request.registry.settings['snovault.elasticsearch.index']
     # Setting request.datastore here only works because routed views are not traversed.
     request.datastore = 'database'
@@ -292,6 +293,7 @@ def get_current_xmin(request):
     # which is not available in recovery.
     xmin = query.scalar()  # lowest xid that is still in progress
     return xmin
+
 
 class Indexer(object):
     def __init__(self, registry):
