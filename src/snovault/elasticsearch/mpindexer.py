@@ -113,7 +113,7 @@ class QueueIndexer(object):
     def __init__(self, registry, processes=None):
         self.es_index_str = registry.settings['snovault.elasticsearch.index']
         self.es = registry[ELASTIC_SEARCH]
-        self.indexer = MPIndexer(config.registry, processes=processes)
+        self.indexer = MPIndexer(registry, processes=processes)
         self.set_task_list([])
 
     def set_task_list(self, tasks):
