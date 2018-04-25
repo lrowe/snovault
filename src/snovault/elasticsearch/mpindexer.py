@@ -112,11 +112,10 @@ def update_object_in_snapshot(args):
         return indexer.update_object(request, uuid, xmin, restart)
 
 
-@view_config(route_name='_queue_index', request_method='GET')
+@view_config(route_name='_queue_index', request_method='GET', permission="index")
 def queue_index(request):
     print('_queue_index')
     return {'worked': 'yes'}
-
 
 class QueueIndexer(object):
 
