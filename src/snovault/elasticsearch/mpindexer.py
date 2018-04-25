@@ -30,7 +30,7 @@ def includeme(config):
         processes = int(processes)
     except:
         processes = None
-    config.registry[INDEXER] = MPIndexer(config.registry, processes=processes)
+    config.registry[INDEXER] = QueueIndexer(config.registry, processes=processes)
 
 
 # Running in subprocess
@@ -108,7 +108,26 @@ def update_object_in_snapshot(args):
         return indexer.update_object(request, uuid, xmin, restart)
 
 
-# Running in main process
+class QueueIndexer(object):
+
+    def __init__(self, registry, processes=None):
+        self.es_index_str = registry.settings['snovault.elasticsearch.index']
+        self.es = registry[ELASTIC_SEARCH]
+        self.indexer = MPIndexer(config.registry, processes=processes)
+        self.set_task_list([])
+
+    def set_task_list(self, tasks):
+        task_obj = {'active_tasks': tasks}
+        self.es.index(index=self.es_index_str, doc_type='meta', id='active_tasks', body=task_obj)
+
+    def update_objects(self, request, uuids, xmin, snapshot_id, restart):
+        new_tasks = [(uuid, xmin, snapshot_id, restart) for uuid in uuids]
+        self.set_task_list(new_tasks)
+        errors = self.indexer.update_objects(request, uuids, xmin, snapshot_id, restart)
+        tasks = self.get_task_list()
+        print('done', str(len(tasks)))
+        return errors
+
 
 class MPIndexer(Indexer):
     maxtasks = 1  # pooled processes will exit and be replaced after this many tasks are completed.
@@ -118,9 +137,6 @@ class MPIndexer(Indexer):
         self.processes = processes
         self.chunksize = int(registry.settings.get('indexer.chunk_size',1024))  # in production.ini (via buildout.cfg) as 1024
         self.initargs = (registry[APP_FACTORY], registry.settings,)
-        INDEX = registry.settings['snovault.elasticsearch.index']
-        self.es = registry[ELASTIC_SEARCH]
-        self.es.index(index=INDEX, doc_type='meta', id='active_tasks', body={'active_tasks': [('testing')]})
 
     @reify
     def pool(self):
