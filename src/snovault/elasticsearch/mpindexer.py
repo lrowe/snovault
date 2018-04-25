@@ -136,8 +136,9 @@ class QueueIndexer(object):
 
     def update_objects(self, request, uuids, xmin, snapshot_id, restart):
         res = requests.get(request.host_url + '/_queue_index')
-        res_dict = res.json()
-        print('start', res_dict)
+        print(res)
+        # res_dict = res.json()
+        # print('start', res_dict)
         new_tasks = [(uuid, xmin, snapshot_id, restart) for uuid in uuids]
         self.set_task_list(new_tasks)
         print('start', str(len(new_tasks)))
