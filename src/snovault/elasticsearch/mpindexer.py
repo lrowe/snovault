@@ -116,7 +116,7 @@ class QueueIndexer(object):
         self.indexer = MPIndexer(registry, processes=processes)
         self.set_task_list([])
 
-    def get_task_list(self, tasks):
+    def get_task_list(self):
         return self.es.get(index=self.es_index_str, doc_type='meta', id='active_tasks').get('_source', {})
 
     def set_task_list(self, tasks):
