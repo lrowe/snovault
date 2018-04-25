@@ -117,12 +117,18 @@ class QueueIndexer(object):
         self.set_task_list([])
 
     def set_task_list(self, tasks):
+        return self.es.get(index=self.es_index_str, doc_type='meta', id='active_tasks').get('_source', {})
+
+    def set_task_list(self, tasks):
+        print('set tasks', str(len(tasks)))
         task_obj = {'active_tasks': tasks}
         self.es.index(index=self.es_index_str, doc_type='meta', id='active_tasks', body=task_obj)
 
     def update_objects(self, request, uuids, xmin, snapshot_id, restart):
+        print('start')
         new_tasks = [(uuid, xmin, snapshot_id, restart) for uuid in uuids]
         self.set_task_list(new_tasks)
+        print('start', str(len(new_tasks)))
         errors = self.indexer.update_objects(request, uuids, xmin, snapshot_id, restart)
         tasks = self.get_task_list()
         print('done', str(len(tasks)))
