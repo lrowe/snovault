@@ -1,3 +1,4 @@
+from pyramid.view import view_config
 from snovault import DBSESSION
 from contextlib import contextmanager
 from multiprocessing import get_context
