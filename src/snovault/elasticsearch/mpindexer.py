@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 
 
 def includeme(config):
-    config.add_route('queue_index', '/_queue_index')
+    config.add_route('_queue_index', '/_queue_index')
     config.scan(__name__)
     if config.registry.settings.get('indexer_worker'):
         return
@@ -112,8 +112,9 @@ def update_object_in_snapshot(args):
         return indexer.update_object(request, uuid, xmin, restart)
 
 
-@view_config(route_name='queue_index', request_method='GET')
+@view_config(route_name='_queue_index', request_method='GET')
 def queue_index(request):
+    print('_queue_index')
     return {'worked': 'yes'}
 
 
