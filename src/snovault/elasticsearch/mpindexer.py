@@ -8,6 +8,7 @@ from pyramid.threadlocal import (
     get_current_request,
     manager,
 )
+import requests
 import atexit
 import logging
 import time
@@ -23,6 +24,8 @@ log = logging.getLogger(__name__)
 
 
 def includeme(config):
+    config.add_route('queue_index', '/_queue_index')
+    config.scan(__name__)
     if config.registry.settings.get('indexer_worker'):
         return
     processes = config.registry.settings.get('indexer.processes')
@@ -108,6 +111,11 @@ def update_object_in_snapshot(args):
         return indexer.update_object(request, uuid, xmin, restart)
 
 
+@view_config(route_name='queue_index', request_method='GET')
+def queue_index(request):
+    return {'worked': 'yes'}
+
+
 class QueueIndexer(object):
 
     def __init__(self, registry, processes=None):
@@ -126,7 +134,9 @@ class QueueIndexer(object):
         self.es.index(index=self.es_index_str, doc_type='meta', id='active_tasks', body=task_obj)
 
     def update_objects(self, request, uuids, xmin, snapshot_id, restart):
-        print('start')
+        res = requests.get(request.host_url + '/_queue_index')
+        res_dict = res.json()
+        print('start', res_dict)
         new_tasks = [(uuid, xmin, snapshot_id, restart) for uuid in uuids]
         self.set_task_list(new_tasks)
         print('start', str(len(new_tasks)))
