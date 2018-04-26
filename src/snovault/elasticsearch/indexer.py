@@ -228,6 +228,7 @@ def index(request):
                     snapshot_id = connection.execute('SELECT pg_export_snapshot();').scalar()
 
     if invalidated and not dry_run:
+        # invalidated = invalidated[:10000]
         if len(stage_for_followup) > 0:
             # Note: undones should be added before, because those uuids will (hopefully) be indexed in this cycle
             state.prep_for_followup(xmin, invalidated)
@@ -334,21 +335,24 @@ class Indexer(object):
             log.error('Error rendering /%s/@@index-data', uuid, exc_info=True)
             last_exc = repr(e)
 
+        es_time = -1
         if last_exc is None:
             for backoff in [0, 10, 20, 40, 80]:
                 time.sleep(backoff)
                 try:
+                    start_time = time.time()
                     self.es.index(
                         index=doc['item_type'], doc_type=doc['item_type'], body=doc,
                         id=str(uuid), version=xmin, version_type='external_gte',
                         request_timeout=30,
                     )
+                    es_time = time.time() - start_time
                 except StatementError:
                     # Can't reconnect until invalid transaction is rolled back
                     raise
                 except ConflictError:
                     log.warning('Conflict indexing %s at version %d', uuid, xmin)
-                    return
+                    return {'error': None, 'es_time': es_time}
                 except (ConnectionError, ReadTimeoutError, TransportError) as e:
                     log.warning('Retryable error indexing %s: %r', uuid, e)
                     last_exc = repr(e)
@@ -358,10 +362,10 @@ class Indexer(object):
                     break
                 else:
                     # Get here on success and outside of try
-                    return
+                    return {'error': None, 'es_time': es_time}
 
         timestamp = datetime.datetime.now().isoformat()
-        return {'error_message': last_exc, 'timestamp': timestamp, 'uuid': str(uuid)}
+        return {'error': {'error_message': last_exc, 'timestamp': timestamp, 'uuid': str(uuid)}, 'es_time': es_time}
 
     def shutdown(self):
         pass

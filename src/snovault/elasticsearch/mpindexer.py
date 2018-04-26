@@ -100,15 +100,24 @@ def snapshot(xmin, snapshot_id):
 
 
 def update_object_in_snapshot(args):
+    msgs = []
     uuid, xmin, snapshot_id, restart = args
     with snapshot(xmin, snapshot_id):
         request = get_current_request()
         indexer = request.registry[INDEXER]
-        return indexer.update_object(request, uuid, xmin, restart)
+        start_time = time.time()
+        msg_dict = indexer.update_object(request, uuid, xmin, restart)
+        update_time = time.time() - start_time
+        return {
+            'error': msg_dict['error'],
+            'es_time': msg_dict['es_time'],
+            'msgs': msgs,
+            'update_time': update_time,
+            'uuid': uuid
+        }
 
 
 # Running in main process
-
 class MPIndexer(Indexer):
     maxtasks = 1  # pooled processes will exit and be replaced after this many tasks are completed.
 
@@ -140,13 +149,43 @@ class MPIndexer(Indexer):
 
         tasks = [(uuid, xmin, snapshot_id, restart) for uuid in uuids]
         errors = []
+        print(uuid_count, workers, chunkiness)
+        sum_time = 0
+        uuid_times = []
+        total = 0
         try:
-            for i, error in enumerate(self.pool.imap_unordered(
-                    update_object_in_snapshot, tasks, chunkiness)):
-                if error is not None:
-                    errors.append(error)
+            for i, msg_dict in enumerate(self.pool.imap_unordered(update_object_in_snapshot, tasks, chunkiness)):
+                total += 1
+                msg_dict['index'] = i
+                if i % 1000 == 0:
+                    print(i, sum_time)
+                sum_time += msg_dict['update_time']
+                msg_dict['sum_time'] = sum_time
+                if msg_dict['update_time'] > 1:
+                    print('err > 1', str(i), str(msg_dict['uuid']), str(msg_dict['update_time']))
+                uuid_times.append(msg_dict)
+                if msg_dict['error'] is not None:
+                    errors.append(msg_dict['error'])
                 if (i + 1) % 50 == 0:
                     log.info('Indexing %d', i + 1)
+            print('total run:', sum_time)
+            with open('/srv/encoded/es_uuid_time.log', 'w') as file_handler:
+                title_str = "(%d,%d,%d);%d;%0.6f\n" % (
+                    uuid_count, workers, chunkiness,
+                    total,
+                    sum_time,
+                )
+                file_handler.write(title_str)
+                for item in uuid_times:
+                    write_str = "%d:%s:%0.4f:%0.4f:%0.8f\n" % (
+                        item['index'],
+                        item['uuid'],
+                        item['es_time'],
+                        item['update_time'],
+                        item['sum_time'],
+                    )
+                    file_handler.write(write_str)
+
         except:
             self.shutdown()
             raise
