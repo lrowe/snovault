@@ -35,7 +35,7 @@ es_logger.setLevel(logging.ERROR)
 log = logging.getLogger(__name__)
 
 def includeme(config):
-    config.add_route('_indexer_state2', '/_indexer_state2')
+    config.add_route('_indexer_state', '/_indexer_state')
     config.scan(__name__)
 
 class IndexerState(object):
@@ -553,7 +553,7 @@ class IndexerState(object):
 
         return display
 
-@view_config(route_name='_indexer_state2', request_method='GET', permission="index")
+@view_config(route_name='_indexer_state', request_method='GET', permission="index")
 def indexer_state_show(request):
     es = request.registry[ELASTIC_SEARCH]
     INDEX = request.registry.settings['snovault.elasticsearch.index']
