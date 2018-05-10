@@ -33,10 +33,16 @@ import copy
 import json
 import requests
 
+from uuid_queue import UuidQueue
+from uuid_queue import UuidQueueTypes
+
+
 es_logger = logging.getLogger("elasticsearch")
 es_logger.setLevel(logging.ERROR)
 log = logging.getLogger(__name__)
 MAX_CLAUSES_FOR_ES = 8192
+UUIDS_GET_IN_BATCHES = 11
+
 
 def includeme(config):
     config.add_route('index', '/index')
@@ -114,6 +120,23 @@ def get_related_uuids(request, es, updated, renamed):
 
 @view_config(route_name='index', request_method='POST', permission="index")
 def index(request):
+    # Queue Args
+    queue_types = ['aws-sqs-msg', 'in-mem', 'redis-list', 'redis-pipe-list', 'redis-pipe-set', 'redis-pipe_set_exec', 'redis-set']
+    queue_type = queue_types[1]
+    batch_store_uuids_by = 10
+    client_options = {}
+    queue_name = 'demo-test-indexer-queue'
+    queue_options = {}
+    if not queue_type == UuidQueueTypes.AWS_SQS and not queue_type == UuidQueueTypes.BASE_MEM:
+        client_options = {'host': 'localhost', 'port': 6379}
+    qkwargs = {
+        'batch_store_uuids_by': batch_store_uuids_by,
+        'client_options': client_options,
+        'queue_name': queue_name,
+        'queue_options': queue_options,
+        'queue_type': queue_type,
+        'uuid_len': 36,
+    }
     INDEX = request.registry.settings['snovault.elasticsearch.index']
     # Setting request.datastore here only works because routed views are not traversed.
     request.datastore = 'database'
@@ -235,8 +258,19 @@ def index(request):
         result = state.start_cycle(invalidated, result)
 
         # Do the work...
-
-        errors = indexer.update_objects(request, invalidated, xmin, snapshot_id, restart)
+        # Create queue
+        queue = UuidQueue(
+            qkwargs['queue_name'],
+            qkwargs['queue_type'],
+            qkwargs['client_options'],
+            qkwargs['queue_options'],
+            qkwargs['batch_store_uuids_by'],
+            qkwargs['uuid_len'],
+        )
+        # Add uuids to queue
+        failed, success_cnt, call_cnt = queue.load_uuids(invalidated)
+        # Start Local object indexing with queue
+        errors = indexer.poll_update_objects(queue, UUIDS_GET_IN_BATCHES, request, xmin, snapshot_id, restart)
 
         result = state.finish_cycle(result,errors)
 
@@ -306,7 +340,23 @@ class Indexer(object):
                 errors.append(error)
             if (i + 1) % 50 == 0:
                 log.info('Indexing %d', i + 1)
+        return errors
 
+    def poll_update_objects(self, queue, uuids_get_in_batches, request, xmin, snapshot_id=None, restart=False):
+        uuids_indexed = 0
+        total_call_count = 0
+        get_uuids_cnt = 0
+        uuids_to_index, call_cnt = queue.get_uuids(uuids_get_in_batches)
+        get_uuids_cnt += 1
+        errors = []
+        while uuids_to_index:
+            uuids_indexed += len(uuids_to_index)
+            total_call_count += call_cnt
+            loop_errors = self.update_objects(request, uuids_to_index, xmin, snapshot_id=snapshot_id, restart=restart)
+            uuids_to_index, call_cnt = queue.get_uuids(uuids_get_in_batches)
+            get_uuids_cnt += 1
+            if loop_errors:
+                error.extend(loop_errors)
         return errors
 
     def update_object(self, request, uuid, xmin, restart=False):
