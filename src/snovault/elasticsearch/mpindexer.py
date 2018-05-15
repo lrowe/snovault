@@ -140,9 +140,11 @@ class MPIndexer(Indexer):
 
         tasks = [(uuid, xmin, snapshot_id, restart) for uuid in uuids]
         errors = []
+        pool_cnt = 0
         try:
             for i, error in enumerate(self.pool.imap_unordered(
                     update_object_in_snapshot, tasks, chunkiness)):
+                pool_cnt += 1
                 if error is not None:
                     errors.append(error)
                 if (i + 1) % 50 == 0:
@@ -150,7 +152,7 @@ class MPIndexer(Indexer):
         except:
             self.shutdown()
             raise
-        return errors
+        return errors, chunkiness, pool_cnt
 
     def shutdown(self):
         if 'pool' in self.__dict__:

@@ -119,7 +119,8 @@ def run(testapp, timeout=DEFAULT_TIMEOUT, dry_run=False, path='/index', control=
                     update_status(last_result=result)
                     if result.get('indexed', 0):
                         update_status(result=result)
-                        log.info(result)
+                        # log.info(result)
+                        print('*'*10)
 
                 update_status(
                     status='waiting',

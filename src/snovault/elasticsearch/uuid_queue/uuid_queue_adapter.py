@@ -159,29 +159,4 @@ class UuidQueue(object):
             self._client.test()
 
 
-def _run(queue_kwargs, run_kwargs):
-    queue = UuidQueue(**queue_kwargs)
-    # Load Uuids
-    uuids_to_load = []
-    for uuid_int in range(1, run_kwargs['uuids_to_create'] + 1):
-        uuid = str(uuid_int)
-        if len(uuid) > queue.uuid_len:
-            print('uuids_to_create made a uuid greater then uuid_len')
-            break
-        while len(uuid) < queue.uuid_len:
-            uuid += 'x'
-        uuids_to_load.append(uuid)
-    failed, success_cnt = queue.load_uuids(uuids_to_load)
-    print('load_uuids', 'failed:' + str(len(failed)), 'all success:' + str(len(uuids_to_load) == success_cnt))
-
-    # Get Uuids
-    uuids_got = []
-    cnt = 0
-    while len(uuids_got) < success_cnt:
-        got_uuids = queue.get_uuids(get_count=run_kwargs['uuids_get_in_batches'])
-        if got_uuids:
-            uuids_got.extend(got_uuids)
-        cnt += 1
-        if cnt == 30:
-            break
-    print('get_uuids', 'match success:' + str(len(uuids_got) == success_cnt))
+queue = UuidQueue('demo-test-queue', AWS_SQS_TYPE, {}, {})

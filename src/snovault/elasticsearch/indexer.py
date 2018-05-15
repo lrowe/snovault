@@ -33,15 +33,14 @@ import copy
 import json
 import requests
 
-from uuid_queue import UuidQueue
-from uuid_queue import UuidQueueTypes
+from snovault.elasticsearch.uuid_queue import UuidQueue
+from snovault.elasticsearch.uuid_queue import UuidQueueTypes
 
 
 es_logger = logging.getLogger("elasticsearch")
 es_logger.setLevel(logging.ERROR)
 log = logging.getLogger(__name__)
 MAX_CLAUSES_FOR_ES = 8192
-UUIDS_GET_IN_BATCHES = 11
 
 
 def includeme(config):
@@ -117,26 +116,9 @@ def get_related_uuids(request, es, updated, renamed):
     return (related_set, False)
 
 
-
 @view_config(route_name='index', request_method='POST', permission="index")
 def index(request):
-    # Queue Args
-    queue_types = ['aws-sqs-msg', 'in-mem', 'redis-list', 'redis-pipe-list', 'redis-pipe-set', 'redis-pipe_set_exec', 'redis-set']
-    queue_type = queue_types[1]
-    batch_store_uuids_by = 10
-    client_options = {}
-    queue_name = 'demo-test-indexer-queue'
-    queue_options = {}
-    if not queue_type == UuidQueueTypes.AWS_SQS and not queue_type == UuidQueueTypes.BASE_MEM:
-        client_options = {'host': 'localhost', 'port': 6379}
-    qkwargs = {
-        'batch_store_uuids_by': batch_store_uuids_by,
-        'client_options': client_options,
-        'queue_name': queue_name,
-        'queue_options': queue_options,
-        'queue_type': queue_type,
-        'uuid_len': 36,
-    }
+    index_view_start_time = time.time()
     INDEX = request.registry.settings['snovault.elasticsearch.index']
     # Setting request.datastore here only works because routed views are not traversed.
     request.datastore = 'database'
@@ -251,8 +233,69 @@ def index(request):
                     snapshot_id = connection.execute('SELECT pg_export_snapshot();').scalar()
 
     if invalidated and not dry_run:
-        if len(invalidated) > 1000:
-            invalidated = invalidated[:1000]
+        # Queue Args
+        # queue type
+        queue_types = ['aws-sqs-msg', 'in-mem', 'redis-list', 'redis-pipe-list', 'redis-pipe-set', 'redis-pipe_set_exec', 'redis-set']
+        args_sets = []
+        args_sets.append((1, 1, 1))
+        args_sets.append((10, 10, 10))
+        args_sets.append((100, 100, 100))
+        args_sets.append((1000, 1000, 1000))
+        args_sets.append((10000, 10000, 10000))
+        args_sets.append((100000, 100000, 100000))
+
+        args_sets.append((100000, 100, 100))
+        args_sets.append((100000, 250, 250))
+        args_sets.append((100000, 500, 500))
+        args_sets.append((100000, 1000, 1000))
+        args_sets.append((100000, 2500, 2500))
+        args_sets.append((100000, 5000, 5000))
+        args_sets.append((100000, 10000, 10000))
+        args_sets.append((100000, 25000, 25000))
+        args_sets.append((100000, 50000, 50000))
+        args_sets.append((100000, 100000, 100000))
+
+        args_sets.append((1000000, 100, 100))
+        args_sets.append((1000000, 250, 250))
+        args_sets.append((1000000, 500, 500))
+        args_sets.append((1000000, 1000, 1000))
+        args_sets.append((1000000, 2500, 2500))
+        args_sets.append((1000000, 5000, 5000))
+        args_sets.append((1000000, 10000, 10000))
+        args_sets.append((1000000, 25000, 25000))
+        args_sets.append((1000000, 50000, 50000))
+        args_sets.append((1000000, 100000, 100000))
+
+        if indexer.args_set_index >= len(args_sets):
+            indexer.args_set_index = 0
+
+        queue_type = queue_types[indexer.queue_type_index]
+        args_set = args_sets[indexer.args_set_index]
+        invalid_limit = args_set[0]
+        batch_store_uuids_by = args_set[1]
+        batch_get_uuids_by = args_set[2]
+        
+        indexer.queue_type_index += 1
+        if indexer.queue_type_index >= len(queue_types):
+            indexer.queue_type_index = 0
+            indexer.args_set_index += 1
+
+        client_options = {}
+        queue_name = 'demo-test-indexer-queue'
+        queue_options = {}
+        if not queue_type == UuidQueueTypes.AWS_SQS and not queue_type == UuidQueueTypes.BASE_MEM:
+            client_options = {'host': 'localhost', 'port': 9300}
+        qkwargs = {
+            'batch_store_uuids_by': batch_store_uuids_by,
+            'client_options': client_options,
+            'queue_name': queue_name,
+            'queue_options': queue_options,
+            'queue_type': queue_type,
+            'uuid_len': 36,
+        }
+        # Queue Args Dones
+        if len(invalidated) > invalid_limit:
+            invalidated = invalidated[:invalid_limit]
         if len(stage_for_followup) > 0:
             # Note: undones should be added before, because those uuids will (hopefully) be indexed in this cycle
             state.prep_for_followup(xmin, invalidated)
@@ -261,6 +304,8 @@ def index(request):
 
         # Do the work...
         # Create queue
+        print('queue_start', queue_type, invalid_limit, batch_store_uuids_by, batch_get_uuids_by)
+        total_queue_start_time = time.time()
         queue = UuidQueue(
             qkwargs['queue_name'],
             qkwargs['queue_type'],
@@ -269,11 +314,29 @@ def index(request):
             qkwargs['batch_store_uuids_by'],
             qkwargs['uuid_len'],
         )
+        queue.purge()
         # Add uuids to queue
         failed, success_cnt, call_cnt = queue.load_uuids(invalidated)
         # Start Local object indexing with queue
-        errors = indexer.poll_update_objects(queue, UUIDS_GET_IN_BATCHES, request, xmin, snapshot_id, restart)
-
+        poll_start_time = time.time()
+        errors, msgs = indexer.poll_update_objects(queue, batch_get_uuids_by, request, xmin, snapshot_id, restart)
+        now_time = time.time()
+        for msg in msgs:
+            print(msg)
+        print('queue_type added_uuids added_failed added_calls poll_errors store_batch pull_batch index_view_time total_queue_time poll_time')
+        print('%s %d %d %d %d %d %d %0.4f %0.4f %0.4f' % (
+                qkwargs['queue_type'],
+                len(invalidated),
+                len(failed),
+                call_cnt,
+                len(errors),
+                qkwargs['batch_store_uuids_by'],
+                batch_get_uuids_by,
+                now_time - index_view_start_time,
+                now_time - total_queue_start_time,
+                now_time - poll_start_time,
+            )
+        )
         result = state.finish_cycle(result,errors)
 
         if errors:
@@ -329,7 +392,10 @@ def get_current_xmin(request):
     return xmin
 
 class Indexer(object):
+
     def __init__(self, registry):
+        self.queue_type_index = 0
+        self.args_set_index = 0
         self.es = registry[ELASTIC_SEARCH]
         self.esstorage = registry[STORAGE]
         self.index = registry.settings['snovault.elasticsearch.index']
@@ -348,18 +414,34 @@ class Indexer(object):
         uuids_indexed = 0
         total_call_count = 0
         get_uuids_cnt = 0
-        uuids_to_index, call_cnt = queue.get_uuids(uuids_get_in_batches)
+        total_sub_call_count = 0
+        
+        uuids_to_index, get_uuids_sub_call_cnt = queue.get_uuids(uuids_get_in_batches)
         get_uuids_cnt += 1
+        total_sub_call_count += get_uuids_sub_call_cnt
+        
         errors = []
+        poll_data = ['get_uuids_cnt sub_call_cnt total_sub_call_cnt uuids_index_so_far uuids_to_index_now index_errors chunkiness pool_cnt mp_time']
         while uuids_to_index:
+            msg = '%d %d %d %d %d ' % (
+                get_uuids_cnt, get_uuids_sub_call_cnt, total_sub_call_count, uuids_indexed, len(uuids_to_index), 
+            )
             uuids_indexed += len(uuids_to_index)
-            total_call_count += call_cnt
-            loop_errors = self.update_objects(request, uuids_to_index, xmin, snapshot_id=snapshot_id, restart=restart)
-            uuids_to_index, call_cnt = queue.get_uuids(uuids_get_in_batches)
+            start_time = time.time() 
+            loop_errors, chunkiness, pool_cnt = self.update_objects(request, uuids_to_index, xmin, snapshot_id=snapshot_id, restart=restart)
+            msg += '%d %d %d %0.4f' % (
+                len(loop_errors),
+                chunkiness,
+                pool_cnt,
+                time.time() - start_time,
+            )
+            poll_data.append(msg)
+            uuids_to_index, get_uuids_sub_call_cnt = queue.get_uuids(uuids_get_in_batches)
             get_uuids_cnt += 1
+            total_sub_call_count += get_uuids_sub_call_cnt
             if loop_errors:
-                error.extend(loop_errors)
-        return errors
+                errors.extend(loop_errors)
+        return errors, poll_data
 
     def update_object(self, request, uuid, xmin, restart=False):
         request.datastore = 'database'  # required by 2-step indexer
