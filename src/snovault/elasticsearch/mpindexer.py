@@ -122,6 +122,7 @@ class MPIndexer(Indexer):
     def pool(self):
         return Pool(
             processes=self.processes,
+            # processes=4,
             initializer=initializer,
             initargs=self.initargs,
             maxtasksperchild=self.maxtasks,
@@ -134,6 +135,7 @@ class MPIndexer(Indexer):
         workers = 1
         if self.processes is not None and self.processes > 0:
             workers = self.processes
+
         chunkiness = int((uuid_count - 1) / workers) + 1
         if chunkiness > self.chunksize:
             chunkiness = self.chunksize

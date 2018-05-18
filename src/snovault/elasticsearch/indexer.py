@@ -33,6 +33,11 @@ import copy
 import json
 import requests
 
+
+from .uuid_queue import UuidQueue
+from .uuid_queue import UuidQueueTypes
+
+
 es_logger = logging.getLogger("elasticsearch")
 es_logger.setLevel(logging.ERROR)
 log = logging.getLogger(__name__)
@@ -43,6 +48,70 @@ def includeme(config):
     config.scan(__name__)
     registry = config.registry
     registry[INDEXER] = Indexer(registry)
+
+
+UUIDS_PATH = './data/uuids-10k.txt'
+QUEUE_NAME = 'worker-listener-queue'
+QUEUE_TYPE =  UuidQueueTypes.REDIS_L
+CLIENT_OPTIONS = {'host': 'localhost', 'port': 9300}
+QUEUE_OPTIONS = {}
+
+
+def _poll_queue(
+        indexer,
+        queue,
+        uuids_get_in_batches,
+        request,
+        xmin,
+        snapshot_id,
+        restart,
+):
+    errors = []
+    uuids_indexed = 0
+    total_call_count = 0
+    get_uuids_cnt = 0
+    uuids_to_index, call_cnt = queue.get_uuids(uuids_get_in_batches)
+    get_uuids_cnt += 1
+    total_call_count += call_cnt
+    start_time = time.time()
+    sleep_interval = 0.01
+    sleep_time = 0.0
+    while uuids_to_index:
+        print(uuids_indexed, total_call_count, get_uuids_cnt)
+        poll_errors = indexer.update_objects(request, uuids_to_index, xmin, snapshot_id, restart)
+        errors.extend(poll_errors)
+        uuids_indexed += len(uuids_to_index)
+        uuids_to_index, call_cnt = queue.get_uuids(uuids_get_in_batches)
+        get_uuids_cnt += 1
+        total_call_count += call_cnt
+        sleep_time += sleep_interval
+        time.sleep(sleep_interval)
+    run_time = time.time() - start_time
+    return errors, uuids_indexed, total_call_count, get_uuids_cnt, run_time
+
+
+def _get_queue(
+        batch_store_uuids_by,
+        uuid_len,
+        xmin,
+        snapshot_id,
+        queue_name=QUEUE_NAME,
+        queue_type=QUEUE_TYPE,
+        client_options=CLIENT_OPTIONS,
+        queue_options=QUEUE_OPTIONS,
+):
+    queue = UuidQueue(
+        queue_name,
+        queue_type,
+        client_options,
+        queue_options,
+        batch_store_uuids_by=batch_store_uuids_by,
+        uuid_len=uuid_len,
+        xmin=xmin,
+        snapshot_id=snapshot_id,
+    )
+    return queue
+
 
 def get_related_uuids(request, es, updated, renamed):
     '''Returns (set of uuids, True if all_uuids)'''
@@ -228,7 +297,12 @@ def index(request):
                     snapshot_id = connection.execute('SELECT pg_export_snapshot();').scalar()
 
     if invalidated and not dry_run:
-        invalidated = invalidated[:10]
+        tmp = []
+        for uuid in invalidated:
+            tmp.append(uuid)
+            if len(tmp) >= 1000:
+                break
+        invalidated = tmp
         if len(stage_for_followup) > 0:
             # Note: undones should be added before, because those uuids will (hopefully) be indexed in this cycle
             state.prep_for_followup(xmin, invalidated)
@@ -236,8 +310,34 @@ def index(request):
         result = state.start_cycle(invalidated, result)
 
         # Do the work...
-
-        errors = indexer.update_objects(request, invalidated, xmin, snapshot_id, restart)
+        print('Indexer Queue Start', len(invalidated))
+        batch_store_uuids_by = 100
+        uuid_len = 36
+        # Create Queue
+        queue = _get_queue(
+            batch_store_uuids_by,
+            uuid_len,
+            xmin,
+            snapshot_id,
+        )
+        # Clear Queue
+        queue.purge()
+        # Load Queue
+        failed, success_cnt, call_cnt = queue.load_uuids(invalidated)
+        print('Load Queue', failed, success_cnt, call_cnt)
+        # Poll queue and update_objects
+        print('Polling Queue', uuids_get_in_batches)
+        errors, uuids_indexed, total_call_count, get_uuids_cnt, run_time = _poll_queue(
+            indexer,
+            queue,
+            uuids_get_in_batches,
+            request,
+            xmin,
+            snapshot_id,
+            restart,
+        )
+        str_run_time = '%0.4f' % (run_time)
+        print('Indexer Queue Done', str_run_time, uuids_indexed, total_call_count, get_uuids_cnt, len(errors))
 
         result = state.finish_cycle(result,errors)
 
@@ -298,6 +398,7 @@ class Indexer(object):
         self.es = registry[ELASTIC_SEARCH]
         self.esstorage = registry[STORAGE]
         self.index = registry.settings['snovault.elasticsearch.index']
+        self.uuids = []
 
     def update_objects(self, request, uuids, xmin, snapshot_id=None, restart=False):
         errors = []
