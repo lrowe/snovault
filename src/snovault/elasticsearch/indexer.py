@@ -35,6 +35,7 @@ import requests
 
 
 from .uuid_queue import UuidQueue
+from .uuid_queue import UuidQueueClient
 from .uuid_queue import UuidQueueTypes
 
 
@@ -51,10 +52,12 @@ def includeme(config):
 
 
 UUIDS_PATH = './data/uuids-10k.txt'
+BATCH_STORE_UUIDS_BY = 100
+CLIENT_OPTIONS = {'host': 'localhost', 'port': 9300}
 QUEUE_NAME = 'worker-listener-queue'
 QUEUE_TYPE =  UuidQueueTypes.REDIS_L
-CLIENT_OPTIONS = {'host': 'localhost', 'port': 9300}
 QUEUE_OPTIONS = {}
+UUID_LEN = 36
 
 
 def _poll_queue(
@@ -91,25 +94,34 @@ def _poll_queue(
 
 
 def _get_queue(
-        batch_store_uuids_by,
-        uuid_len,
-        xmin,
-        snapshot_id,
-        queue_name=QUEUE_NAME,
-        queue_type=QUEUE_TYPE,
+        as_client=False,
+        batch_store_uuids_by=BATCH_STORE_UUIDS_BY,
         client_options=CLIENT_OPTIONS,
+        queue_name=QUEUE_NAME,
         queue_options=QUEUE_OPTIONS,
+        queue_type=QUEUE_TYPE,
+        snapshot_id=None,
+        uuid_len=UUID_LEN,
+        xmin=None,
 ):
-    queue = UuidQueue(
-        queue_name,
-        queue_type,
-        client_options,
-        queue_options,
-        batch_store_uuids_by=batch_store_uuids_by,
-        uuid_len=uuid_len,
-        xmin=xmin,
-        snapshot_id=snapshot_id,
-    )
+    if as_client:
+        queue = UuidQueueClient(
+            QUEUE_NAME,
+            QUEUE_TYPE,
+            CLIENT_OPTIONS,
+            QUEUE_OPTIONS,
+        )
+    else:
+        queue = UuidQueue(
+            queue_name,
+            queue_type,
+            client_options,
+            queue_options,
+            batch_store_uuids_by=batch_store_uuids_by,
+            uuid_len=uuid_len,
+            xmin=xmin,
+            snapshot_id=snapshot_id,
+        )
     return queue
 
 
@@ -311,14 +323,10 @@ def index(request):
 
         # Do the work...
         print('Indexer Queue Start', len(invalidated))
-        batch_store_uuids_by = 100
-        uuid_len = 36
         # Create Queue
         queue = _get_queue(
-            batch_store_uuids_by,
-            uuid_len,
-            xmin,
-            snapshot_id,
+            snapshot_id=snapshot_id,
+            xmin=xmin,
         )
         print(queue.get_meta_data())
         # Clear Queue
@@ -327,11 +335,11 @@ def index(request):
         failed, success_cnt, call_cnt = queue.load_uuids(invalidated)
         print('Load Queue', failed, success_cnt, call_cnt)
         # Poll queue and update_objects
-        print('Polling Queue', batch_store_uuids_by)
+        print('Polling Queue', BATCH_STORE_UUIDS_BY)
         errors, uuids_indexed, total_call_count, get_uuids_cnt, run_time = _poll_queue(
             indexer,
             queue,
-            batch_store_uuids_by,
+            BATCH_STORE_UUIDS_BY,
             request,
             xmin,
             snapshot_id,

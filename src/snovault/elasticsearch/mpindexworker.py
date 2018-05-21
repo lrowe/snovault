@@ -14,11 +14,7 @@ def includeme(config):
 @view_config(route_name='mpindex_worker', request_method='POST', permission="index")
 def mpindex_worker(request):
     print('mpindex_worker', 'start')
-# queue = _get_queue(
-#        batch_store_uuids_by,
-#        uuid_len,
-#        xmin,
-#        snapshot_id,
-#    )
+    queue = _get_queue(as_client=True)
+    print(queue.get_meta_data)
     print('mpindex_worker', 'end')
     return {'testing': 'foo'}

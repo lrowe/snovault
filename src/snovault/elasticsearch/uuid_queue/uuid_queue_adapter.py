@@ -79,10 +79,6 @@ class UuidQueueClient(object):
             queue_type,
             client_options,
             queue_options,
-            batch_store_uuids_by=1,
-            uuid_len=36,
-            xmin=None,
-            snapshot_id=None
     ):
         if not UuidQueueTypes.check_queue_type(queue_type):
             raise ValueError('UuidQueueTypes type %s not handled' % queue_type)
