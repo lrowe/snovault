@@ -99,7 +99,8 @@ class UuidQueue(object):
         To cover the case if the first pop was '5x'.
 
     """
-    def __init__(self, queue_name, queue_type, client_options, queue_options, batch_store_uuids_by=1, uuid_len=36):
+    def __init__(self, queue_name, queue_type, client_options, queue_options,
+            batch_store_uuids_by=1, uuid_len=36, xmin=None, snapshot_id=None):
         if not UuidQueueTypes.check_queue_type(queue_type):
             raise ValueError('UuidQueueTypes type %s not handled' % queue_type)
         if UuidQueueTypes.BASE_MEM == queue_type:
