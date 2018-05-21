@@ -176,7 +176,7 @@ class UuidQueue(UuidQueueClient):
             xmin=None,
             snapshot_id=None
     ):
-        super.__init__(
+        super().__init__(
             queue_name,
             queue_type,
             client_options,
