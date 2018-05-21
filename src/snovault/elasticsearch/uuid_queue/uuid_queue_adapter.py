@@ -79,6 +79,7 @@ class UuidQueueClient(object):
             queue_type,
             client_options,
             queue_options,
+            uuid_len=36
     ):
         if not UuidQueueTypes.check_queue_type(queue_type):
             raise ValueError('UuidQueueTypes type %s not handled' % queue_type)

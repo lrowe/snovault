@@ -93,6 +93,7 @@ def _poll_queue(
     return errors, uuids_indexed, total_call_count, get_uuids_cnt, run_time
 
 
+
 def _get_queue(
         as_client=False,
         batch_store_uuids_by=BATCH_STORE_UUIDS_BY,
@@ -110,6 +111,7 @@ def _get_queue(
             QUEUE_TYPE,
             CLIENT_OPTIONS,
             QUEUE_OPTIONS,
+            uuid_len=UUID_LEN,
         )
     else:
         queue = UuidQueue(
