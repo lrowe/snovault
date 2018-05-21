@@ -326,11 +326,11 @@ def index(request):
         failed, success_cnt, call_cnt = queue.load_uuids(invalidated)
         print('Load Queue', failed, success_cnt, call_cnt)
         # Poll queue and update_objects
-        print('Polling Queue', uuids_get_in_batches)
+        print('Polling Queue', batch_store_uuids_by)
         errors, uuids_indexed, total_call_count, get_uuids_cnt, run_time = _poll_queue(
             indexer,
             queue,
-            uuids_get_in_batches,
+            batch_store_uuids_by,
             request,
             xmin,
             snapshot_id,
