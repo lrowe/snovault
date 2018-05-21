@@ -320,6 +320,7 @@ def index(request):
             xmin,
             snapshot_id,
         )
+        print(queue.get_meta_data())
         # Clear Queue
         queue.purge()
         # Load Queue

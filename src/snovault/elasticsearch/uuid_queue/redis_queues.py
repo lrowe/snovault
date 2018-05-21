@@ -102,11 +102,21 @@ class RedisQueue(UuidBaseQueue):
     def test(self):
         self._client.test()
 
+    # Meta Data
+    def get_meta_data(self):
+        return self._client.hgetall(self.queue_meta_name)
+
     def set_meta_data(self):
         self._client.hmset(
             self.queue_meta_name,
-            {'test': 'foo'}
+            {
+                'batch_store_uuids_by': self._batch_store_uuids_by,
+                'uuid_len': self.uuid_len,
+                'xmin': self._xmin,
+                'snapshot_id': self._snapshot_id,
+            }
         )
+
 
 class RedisPipeQueue(RedisQueue):
 
