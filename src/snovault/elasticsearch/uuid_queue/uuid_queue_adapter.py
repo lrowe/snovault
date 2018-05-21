@@ -128,7 +128,7 @@ class UuidQueue(object):
         return self._queue.get_meta_data()
 
     def _set_meta_data(self):
-        return self._queue.set_meta_data(
+        return self._queue._set_meta_data(
             {
                 'batch_store_uuids_by': self._batch_store_uuids_by,
                 'uuid_len': self.uuid_len,
