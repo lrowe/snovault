@@ -2,8 +2,8 @@ from pyramid.view import view_config
 
 from .interfaces import INDEXER
 
-from .indexer import get_queue
-from .indexer import poll_queue
+from .indexer import _get_queue
+from .indexer import _poll_queue
 
 
 def includeme(config):
@@ -14,6 +14,6 @@ def includeme(config):
 @view_config(route_name='mpindex_worker', request_method='POST', permission="index")
 def mpindex_worker(request):
     print('mpindex_worker', 'start')
-    queue = get_queue()
+    queue = _get_queue()
     print('mpindex_worker', 'end')
     return {'testing': 'foo'}
