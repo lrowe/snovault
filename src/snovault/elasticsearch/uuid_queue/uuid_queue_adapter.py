@@ -111,16 +111,31 @@ class UuidQueue(object):
             queue = client.get_queue(queue_name, queue_type, queue_options)
         else:
             client = RedisClient(**client_options)
-            queue = client.get_queue(queue_name, queue_type, uuid_len=uuid_len)
+            queue = client.get_queue(
+                queue_name,
+                queue_type,
+                uuid_len=uuid_len
+            )
         self._client = client
         self._queue = queue
         self._batch_store_uuids_by = batch_store_uuids_by
         self.uuid_len = uuid_len
         self._xmin = xmin
         self._snapshot_id = snapshot_id
+        self._set_meta_data()
 
     def get_meta_data(self):
         return self._queue.get_meta_data()
+
+    def _set_meta_data(self):
+        return self._queue.set_meta_data(
+            {
+                'batch_store_uuids_by': self._batch_store_uuids_by,
+                'uuid_len': self.uuid_len,
+                '_xmin': self._xmin,
+                '_snapshot_id': self._snapshot_id,
+            }
+        )
 
     @property
     def queue_name(self):
