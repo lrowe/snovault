@@ -15,6 +15,6 @@ def includeme(config):
 def mpindex_worker(request):
     print('mpindex_worker', 'start')
     queue = _get_queue(as_client=True)
-    print(queue.get_meta_data)
+    print(queue.get_meta_data())
     print('mpindex_worker', 'end')
     return {'testing': 'foo'}
