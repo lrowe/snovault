@@ -60,7 +60,9 @@ class RedisQueue(UuidBaseQueue):
     def __init__(self, queue_name, client, uuid_len=36):
         self._client = client
         self.queue_name = self.key_tag + '_' + queue_name
+        self.queue_meta_name = 'meta:' + self.key_tag + '_' + queue_name
         self.uuid_len = uuid_len
+        self.set_meta_data()
 
     def _call_func(self, func_str, value=None):
         """
@@ -100,6 +102,11 @@ class RedisQueue(UuidBaseQueue):
     def test(self):
         self._client.test()
 
+    def set_meta_data(self):
+        self._client.hmset(
+            self.queue_meta_name,
+            {'test': 'foo'}
+        )
 
 class RedisPipeQueue(RedisQueue):
 

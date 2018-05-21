@@ -117,8 +117,11 @@ class UuidQueue(object):
         self._batch_store_uuids_by = batch_store_uuids_by
         self.uuid_len = uuid_len
 
+    def set_meta_data(self):
+        self._queue.set()
+
     @property
-    def queue_name():
+    def queue_name(self):
         return self._queue.queue_name
 
     def load_uuids(self, uuids):
