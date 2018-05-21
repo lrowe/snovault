@@ -62,7 +62,6 @@ class RedisQueue(UuidBaseQueue):
         self.queue_name = self.key_tag + '_' + queue_name
         self.queue_meta_name = 'meta:' + self.key_tag + '_' + queue_name
         self.uuid_len = uuid_len
-        self.set_meta_data()
 
     def _call_func(self, func_str, value=None):
         """
