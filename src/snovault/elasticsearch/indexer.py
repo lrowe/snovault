@@ -112,6 +112,8 @@ def _get_queue(
     )
     return queue
 
+def _get_queue_client():
+
 
 def get_related_uuids(request, es, updated, renamed):
     '''Returns (set of uuids, True if all_uuids)'''
