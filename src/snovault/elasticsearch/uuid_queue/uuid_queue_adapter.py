@@ -71,7 +71,73 @@ class UuidQueueTypes(object):
         return values
 
 
-class UuidQueue(object):
+class UuidQueueClient(object):
+
+    def __init__(
+            self,
+            queue_name,
+            queue_type,
+            client_options,
+            queue_options,
+            batch_store_uuids_by=1,
+            uuid_len=36,
+            xmin=None,
+            snapshot_id=None
+    ):
+        if not UuidQueueTypes.check_queue_type(queue_type):
+            raise ValueError('UuidQueueTypes type %s not handled' % queue_type)
+        if UuidQueueTypes.BASE_MEM == queue_type:
+            client = None
+            queue = UuidBaseQueue(queue_name, queue_type, queue_options)
+        elif UuidQueueTypes.AWS_SQS == queue_type:
+            client = AwsClient(**client_options)
+            queue = client.get_queue(queue_name, queue_type, queue_options)
+        else:
+            client = RedisClient(**client_options)
+            queue = client.get_queue(
+                queue_name,
+                queue_type,
+                uuid_len=uuid_len
+            )
+        self._client = client
+        self._queue = queue
+        self._batch_store_uuids_by = None
+        self.uuid_len = None
+        self._xmin = None
+        self._snapshot_id = None
+
+    def get_uuids(self, get_count=1):
+        uuids = []
+        bytes_got = 0
+        call_cnt = 0
+        if self._batch_store_uuids_by == 1:
+            uuids, bytes_got, call_cnt = self._queue.get_values(get_count)
+        else:
+            batch_get_count = (get_count + 2)//self._batch_store_uuids_by
+            combined_uuids_list, bytes_got, call_cnt = self._queue.get_values(batch_get_count)
+            for combined_uuids in combined_uuids_list:
+                bytes_got += len(combined_uuids)
+                uncombined_uuids = _get_uncombined_uuids(self.uuid_len, combined_uuids)
+                uuids.extend(uncombined_uuids)
+        return uuids, call_cnt
+
+    # Meta Data
+    def set_meta_data(self):
+        '''
+        UuidQueueClient set_meta_data pulls meta data
+        set from the UuidQueue and then sets it on the instance.
+        '''
+        meta_data = self._queue.get_meta_data()
+        self._batch_store_uuids_by = meta_data['batch_store_uuids_by']
+        self.uuid_len = meta_data['uuid_len']
+        self._xmin = meta_data['xmin']
+        self._snapshot_id = meta_data['snapshot_id']
+
+    def get_meta_data(self):
+        return self._queue.get_meta_data()
+
+
+class UuidQueue(UuidQueueClient):
     """
     Indexer to Queue Adapter / Manager
 
@@ -99,41 +165,37 @@ class UuidQueue(object):
         To cover the case if the first pop was '5x'.
 
     """
-    def __init__(self, queue_name, queue_type, client_options, queue_options,
-            batch_store_uuids_by=1, uuid_len=36, xmin=None, snapshot_id=None):
-        if not UuidQueueTypes.check_queue_type(queue_type):
-            raise ValueError('UuidQueueTypes type %s not handled' % queue_type)
-        if UuidQueueTypes.BASE_MEM == queue_type:
-            client = None
-            queue = UuidBaseQueue(queue_name, queue_type, queue_options)
-        elif UuidQueueTypes.AWS_SQS == queue_type:
-            client = AwsClient(**client_options)
-            queue = client.get_queue(queue_name, queue_type, queue_options)
-        else:
-            client = RedisClient(**client_options)
-            queue = client.get_queue(
-                queue_name,
-                queue_type,
-                uuid_len=uuid_len
-            )
-        self._client = client
-        self._queue = queue
+    def __init__(
+            self,
+            queue_name,
+            queue_type,
+            client_options,
+            queue_options,
+            batch_store_uuids_by=1,
+            uuid_len=36,
+            xmin=None,
+            snapshot_id=None
+    ):
+        super.__init__(
+            queue_name,
+            queue_type,
+            client_options,
+            queue_options,
+            batch_store_uuids_by=1,
+            uuid_len=36,
+            xmin=None,
+            snapshot_id=None
+        )
         self._batch_store_uuids_by = batch_store_uuids_by
         self.uuid_len = uuid_len
         self._xmin = xmin
         self._snapshot_id = snapshot_id
-        self._set_meta_data()
-
-    def get_meta_data(self):
-        return self._queue.get_meta_data()
-
-    def _set_meta_data(self):
-        return self._queue._set_meta_data(
+        self._queue._set_meta_data(
             {
                 'batch_store_uuids_by': self._batch_store_uuids_by,
                 'uuid_len': self.uuid_len,
-                '_xmin': self._xmin,
-                '_snapshot_id': self._snapshot_id,
+                'xmin': self._xmin,
+                'snapshot_id': self._snapshot_id,
             }
         )
 
@@ -153,21 +215,6 @@ class UuidQueue(object):
             failed, bytes_added, call_cnt  = self._queue.add_values(combined_uuids_gen)
         success_cnt = bytes_added//self.uuid_len
         return failed, success_cnt, call_cnt
-
-    def get_uuids(self, get_count=1):
-        uuids = []
-        bytes_got = 0
-        call_cnt = 0
-        if self._batch_store_uuids_by == 1:
-            uuids, bytes_got, call_cnt = self._queue.get_values(get_count)
-        else:
-            batch_get_count = (get_count + 2)//self._batch_store_uuids_by
-            combined_uuids_list, bytes_got, call_cnt = self._queue.get_values(batch_get_count)
-            for combined_uuids in combined_uuids_list:
-                bytes_got += len(combined_uuids)
-                uncombined_uuids = _get_uncombined_uuids(self.uuid_len, combined_uuids)
-                uuids.extend(uncombined_uuids)
-        return uuids, call_cnt
 
     def purge(self):
         self._queue.purge()
