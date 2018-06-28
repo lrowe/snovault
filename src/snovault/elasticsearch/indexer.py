@@ -45,6 +45,7 @@ QUEUE_NAME = 'esw-queue'
 QUEUE_TYPE = UuidQueueTypes.AWS_SQS
 CLIENT_OPTIONS = {}
 QUEUE_OPTIONS = {}
+BATCH_SIZE = 6000
 
 def includeme(config):
     config.add_route('index', '/index')
@@ -250,6 +251,7 @@ def index(request):
             QUEUE_TYPE,
             CLIENT_OPTIONS,
             QUEUE_OPTIONS,
+            batch_store_uuids_by=BATCH_SIZE,
         )
         uuid_queue.load_uuids(invalidated)
         result = state.start_cycle(invalidated, result)
@@ -258,11 +260,13 @@ def index(request):
         updated_total = 0
         errors = []
         total = len(invalidated)
-        for uuids, call_cnt in uuid_queue.get_uuids():
+        uuids, call_cnt = uuid_queue.get_uuids(BATCH_SIZE)
+        while uuids:
             total += len(uuids)
             print('updated objects %d of %d' % (updated_total, total), 'errors:', len(errors))
             batch_errors = indexer.update_objects(request, uuids, xmin, snapshot_id, restart)
             errors.extend(batch_errors)
+            uuids, call_cnt = uuid_queue.get_uuids(BATCH_SIZE)
         result = state.finish_cycle(result,errors)
 
         if errors:
