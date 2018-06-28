@@ -25,6 +25,10 @@ from .indexer_state import (
     all_types,
     SEARCH_MAX
 )
+
+from encode_uuid_queue import UuidQueue
+from encode_uuid_queue import UuidQueueTypes
+
 import datetime
 import logging
 import pytz
@@ -37,6 +41,10 @@ es_logger = logging.getLogger("elasticsearch")
 es_logger.setLevel(logging.ERROR)
 log = logging.getLogger(__name__)
 MAX_CLAUSES_FOR_ES = 8192
+QUEUE_NAME = 'esw-queue'
+QUEUE_TYPE = UuidQueueTypes.AWS_SQS
+CLIENT_OPTIONS = {}
+QUEUE_OPTIONS = {}
 
 def includeme(config):
     config.add_route('index', '/index')
@@ -228,16 +236,33 @@ def index(request):
                     snapshot_id = connection.execute('SELECT pg_export_snapshot();').scalar()
 
     if invalidated and not dry_run:
+        tmp = []
+        for uuid in invalidated:
+            tmp.append(uuid)
+            if len(tmp) > 1000:
+                break
         if len(stage_for_followup) > 0:
             # Note: undones should be added before, because those uuids will (hopefully) be indexed in this cycle
             state.prep_for_followup(xmin, invalidated)
 
+        uuid_queue = UuidQueue(
+            QUEUE_NAME,
+            QUEUE_TYPE,
+            CLIENT_OPTIONS,
+            QUEUE_OPTIONS,
+        )
+        uuid_queue.load_uuids(invalidated)
         result = state.start_cycle(invalidated, result)
 
         # Do the work...
-
-        errors = indexer.update_objects(request, invalidated, xmin, snapshot_id, restart)
-
+        updated_total = 0
+        errors = []
+        total = len(invalidated)
+        for uuids, call_cnt in uuid_queue.get_uuids():
+            total += len(uuids)
+            print('updated objects %d of %d' % (updated_total, total), 'errors:', len(errors))
+            batch_errors = indexer.update_objects(request, uuids, xmin, snapshot_id, restart)
+            errors.extend(batch_errors)
         result = state.finish_cycle(result,errors)
 
         if errors:
