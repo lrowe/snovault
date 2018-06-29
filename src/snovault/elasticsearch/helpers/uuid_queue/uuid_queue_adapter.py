@@ -172,7 +172,7 @@ class UuidQueue(UuidQueueClient):
             queue_type,
             client_options,
             queue_options,
-            batch_store_uuids_by=1,
+            batch_store_uuids_by=batch_store_uuids_by,
             uuid_len=36,
         )
         self._audit_dict = {}
