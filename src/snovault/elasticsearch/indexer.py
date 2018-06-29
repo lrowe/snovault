@@ -26,8 +26,8 @@ from .indexer_state import (
     SEARCH_MAX
 )
 
-from encode_uuid_queue import UuidQueue
-from encode_uuid_queue import UuidQueueTypes
+from .helpers.uuid_queue import UuidQueue
+from .helpers.uuid_queue import UuidQueueTypes
 
 import datetime
 import logging
