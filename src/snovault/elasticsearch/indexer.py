@@ -241,7 +241,9 @@ def index(request):
         if len(stage_for_followup) > 0:
             # Note: undones should be added before, because those uuids will (hopefully) be indexed in this cycle
             state.prep_for_followup(xmin, invalidated)
-
+        total = len(invalidated)
+        print('Loading %d uuids to aws' % total)
+        load_time_start = time.time()
         uuid_queue = UuidQueue(
             QUEUE_NAME,
             QUEUE_TYPE,
@@ -250,17 +252,23 @@ def index(request):
             batch_store_uuids_by=BATCH_SIZE,
         )
         uuid_queue.load_uuids(invalidated)
+        print('Loaded %d uuids to aws in %0.4f' % (total, time.time() - load_time_start))
         result = state.start_cycle(invalidated, result)
 
         # Do the work...
-        updated_total = 0
+        completed_total = 0
         errors = []
-        total = len(invalidated)
         uuids, call_cnt = uuid_queue.get_uuids(BATCH_SIZE)
         while uuids:
-            total += len(uuids)
-            print('updated objects %d of %d' % (updated_total, total), 'errors:', len(errors))
+            uuids_len = len(uuids)
+            print(
+                'updating %d uuids. completed %d of %d' % (
+                    uuids_len, completed_total, total
+                ),
+                'errors:', len(errors)
+            )
             batch_errors = indexer.update_objects(request, uuids, xmin, snapshot_id, restart)
+            completed_total = len(uuids) - len(batch_errors)
             errors.extend(batch_errors)
             uuids, call_cnt = uuid_queue.get_uuids(BATCH_SIZE)
         result = state.finish_cycle(result,errors)
