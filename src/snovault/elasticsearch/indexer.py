@@ -265,10 +265,14 @@ def index(request):
                 'updating %d uuids. completed %d of %d' % (
                     uuids_len, completed_total, total
                 ),
-                'errors:', len(errors)
+                'errors:', len(errors),
             )
+            update_start_time = time.time()
             batch_errors = indexer.update_objects(request, uuids, xmin, snapshot_id, restart)
-            completed_total = len(uuids) - len(batch_errors)
+            print('update time: %0.4f' % (
+                time.time() - update_start_time,
+            )
+            completed_total += uuids_len - len(batch_errors)
             errors.extend(batch_errors)
             uuids, call_cnt = uuid_queue.get_uuids(BATCH_SIZE)
         result = state.finish_cycle(result,errors)
