@@ -258,7 +258,7 @@ def index(request):
         # Do the work...
         completed_total = 0
         errors = []
-        uuids, call_cnt = uuid_queue.get_uuids(BATCH_SIZE)
+        uuids, call_cnt = uuid_queue.get_uuids(BATCH_SIZE * 10)
         while uuids:
             uuids_len = len(uuids)
             print(
@@ -268,7 +268,7 @@ def index(request):
                 'errors:', len(errors)
             )
             batch_errors = indexer.update_objects(request, uuids, xmin, snapshot_id, restart)
-            completed_total = len(uuids) - len(batch_errors)
+            completed_total += uuids_len - len(batch_errors)
             errors.extend(batch_errors)
             uuids, call_cnt = uuid_queue.get_uuids(BATCH_SIZE)
         result = state.finish_cycle(result,errors)
