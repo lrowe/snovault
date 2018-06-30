@@ -261,6 +261,8 @@ def index(request):
         uuids, call_cnt = uuid_queue.get_uuids(BATCH_SIZE)
         while uuids:
             uuids_len = len(uuids)
+            print('**')
+            print('get_uuids', uuids_len, call_cnt)
             print(
                 'updating %d uuids. completed %d of %d' % (
                     uuids_len, completed_total, total
