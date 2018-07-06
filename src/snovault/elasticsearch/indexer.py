@@ -33,10 +33,23 @@ import copy
 import json
 import requests
 
+from .uuid_queue import (
+    UuidQueue,
+    UuidQueueTypes,
+    UuidQueueWorker,
+)
+
 es_logger = logging.getLogger("elasticsearch")
 es_logger.setLevel(logging.ERROR)
 log = logging.getLogger(__name__)
 MAX_CLAUSES_FOR_ES = 8192
+QUEUE_NAME = 'esw-queue'
+# QUEUE_TYPE = UuidQueueTypes.AWS_SQS
+QUEUE_TYPE = UuidQueueTypes.REDIS_LIST_PIPE
+CLIENT_OPTIONS = {}
+QUEUE_OPTIONS = {}
+BATCH_SIZE = 6000
+BATCH_GET_SIZE = 100000
 
 def includeme(config):
     config.add_route('index', '/index')
@@ -232,11 +245,83 @@ def index(request):
             # Note: undones should be added before, because those uuids will (hopefully) be indexed in this cycle
             state.prep_for_followup(xmin, invalidated)
 
+        total = len(invalidated)
+        print('Loading %d uuids to aws' % total)
+        load_time_start = time.time()
+        queue_args = {
+            'batch_by': BATCH_SIZE,
+            'uuid_len': 36,
+            'xmin': 'nothing',
+            'host': 'localhost',
+            'port': '9250',
+        }
+        uuid_queue = UuidQueue(
+            QUEUE_NAME,
+            QUEUE_TYPE,
+            copy.copy(queue_args),
+        )
+        failed, success_cnt, call_cnt = uuid_queue.load_uuids(invalidated)
+        print(
+            'Loaded %d uuids to %s in %0.4f'
+            '\n failed %d, success_cnt %d, call_cnt: %d'
+            ''% (
+                total,
+                QUEUE_TYPE,
+                time.time() - load_time_start,
+                len(failed),
+                success_cnt,
+                call_cnt,
+            )
+        )
+
         result = state.start_cycle(invalidated, result)
 
         # Do the work...
 
-        errors = indexer.update_objects(request, invalidated, xmin, snapshot_id, restart)
+        errors = []
+        uuid_queue_worker = UuidQueueWorker(
+            QUEUE_NAME,
+            QUEUE_TYPE,
+            copy.copy(queue_args),
+        )
+        got_total = 0
+        call_total = 0
+        get_start_time = time.time()
+        batch_number = 1
+        uuids, call_cnt = uuid_queue.get_uuids(BATCH_GET_SIZE)
+        print('batch %d get time: %0.4f' % (
+            batch_number,
+            get_start_time - time.time(),
+        )
+        got_total += len(uuids)
+        call_total += call_cnt
+        index_start_time = time.time()
+        while uuids:
+            # Log
+            print(
+                'Pre update for indexing %d uuids in batches %d. time in: %0.4f'
+                '\ngot_total: %d, call_total: %d, uuids in batch: %d'
+                '' %
+                (
+                    total, BATCH_GET_SIZE, index_start_time - time.time(),
+                    got_total, call_total, len(uuids),
+                )
+            )
+            # Index
+            batch_start_time = time.time()
+            batch_errors = indexer.update_objects(request, uuids, xmin, snapshot_id, restart)
+            errors.extend(batch_errors)
+            print('batch time: %0.4f' % (time.time() - batch_start_time))
+            # Get Next Batch
+            get_start_time = time.time()
+            batch_number = 1
+            uuids, call_cnt = uuid_queue.get_uuids(BATCH_GET_SIZE)
+            print('batch %d get time: %0.4f' % (
+                batch_number,
+                time.time() - get_start_time,
+            )
+            got_total += len(uuids)
+            call_total += call_cnt
 
         result = state.finish_cycle(result,errors)
 
