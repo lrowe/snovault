@@ -290,8 +290,9 @@ def index(request):
         batch_number = 1
         uuids, call_cnt = uuid_queue.get_uuids(BATCH_GET_SIZE)
         print('batch %d get time: %0.4f' % (
-            batch_number,
-            get_start_time - time.time(),
+                batch_number,
+                get_start_time - time.time(),
+            )
         )
         got_total += len(uuids)
         call_total += call_cnt
