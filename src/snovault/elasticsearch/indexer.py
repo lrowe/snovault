@@ -262,15 +262,11 @@ def index(request):
         )
         failed, success_cnt, call_cnt = uuid_queue.load_uuids(invalidated)
         print(
-            'Loaded %d uuids to %s in %0.4f'
-            '\n failed %d, success_cnt %d, call_cnt: %d'
+            'Loaded %d uuids to %s in %0.4f.  Load Batch: %d'
+            '\n\tfailed %d, success_cnt %d, call_cnt: %d'
             ''% (
-                total,
-                QUEUE_TYPE,
-                time.time() - load_time_start,
-                len(failed),
-                success_cnt,
-                call_cnt,
+                total, QUEUE_TYPE, time.time() - load_time_start, BATCH_SIZE,
+                len(failed), success_cnt, call_cnt,
             )
         )
 
@@ -286,42 +282,41 @@ def index(request):
         )
         got_total = 0
         call_total = 0
+        batch_number = 0
+
         get_start_time = time.time()
-        batch_number = 1
+        batch_number += 1
         uuids, call_cnt = uuid_queue.get_uuids(BATCH_GET_SIZE)
-        print('batch %d get time: %0.4f' % (
-                batch_number,
-                get_start_time - time.time(),
-            )
-        )
+        get_time = time.time() - get_start_time,
         got_total += len(uuids)
         call_total += call_cnt
+
         index_start_time = time.time()
+        print('Start indexing loop. %d uuids in batches of %d' % (
+                total, BATCH_GET_SIZE,
+            )
+        )
         while uuids:
-            # Log
             print(
-                'Pre update for indexing %d uuids in batches %d. time in: %0.4f'
-                '\ngot_total: %d, call_total: %d, uuids in batch: %d'
-                '' %
-                (
-                    total, BATCH_GET_SIZE, index_start_time - time.time(),
-                    got_total, call_total, len(uuids),
+                'batch %d: got %d (call_cnt: %d) in %0.4f. Run Time: %0.4f' % (
+                    batch_number, len(uuids), call_cnt, get_time,
+                    time.time() - index_start_time,
                 )
             )
-            # Index
+
             batch_start_time = time.time()
             batch_errors = indexer.update_objects(request, uuids, xmin, snapshot_id, restart)
-            errors.extend(batch_errors)
-            print('batch time: %0.4f' % (time.time() - batch_start_time))
-            # Get Next Batch
-            get_start_time = time.time()
-            batch_number = 1
-            uuids, call_cnt = uuid_queue.get_uuids(BATCH_GET_SIZE)
-            print('batch %d get time: %0.4f' % (
-                    batch_number,
-                    time.time() - get_start_time,
+            print(
+                '\tBatch Time: %0.4f, Errors: %d' % (
+                    time.time() - batch_start_time, len(batch_errors)
                 )
             )
+            errors.extend(batch_errors)
+
+            get_start_time = time.time()
+            batch_number += 1
+            uuids, call_cnt = uuid_queue.get_uuids(BATCH_GET_SIZE)
+            get_time = time.time() - get_start_time,
             got_total += len(uuids)
             call_total += call_cnt
 
