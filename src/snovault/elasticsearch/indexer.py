@@ -319,6 +319,12 @@ def index(request):
             get_time = time.time() - get_start_time
             got_total += len(uuids)
             call_total += call_cnt
+        print(
+            'batch %d: got %d (call_cnt: %d) in %0.4f. Run Time: %0.4f' % (
+                batch_number, len(uuids), call_cnt, get_time,
+                time.time() - index_start_time,
+            )
+        )
 
         result = state.finish_cycle(result,errors)
 
