@@ -49,7 +49,7 @@ QUEUE_TYPE = UuidQueueTypes.REDIS_LIST_PIPE
 CLIENT_OPTIONS = {}
 QUEUE_OPTIONS = {}
 BATCH_SIZE = 6000
-BATCH_GET_SIZE = 100000
+BATCH_GET_SIZE = 200000
 
 def includeme(config):
     config.add_route('index', '/index')
