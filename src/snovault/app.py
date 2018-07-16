@@ -102,6 +102,7 @@ def json_from_path(path, default=None):
 def configure_dbsession(config):
     from snovault import DBSESSION
     settings = config.registry.settings
+    print(settings)
     DBSession = settings.pop(DBSESSION, None)
     if DBSession is None:
         engine = configure_engine(settings)
@@ -166,6 +167,7 @@ def app_version(config):
 
 
 def main(global_config, **local_config):
+    print('main global')
     """ This function returns a Pyramid WSGI application.
     """
     settings = global_config

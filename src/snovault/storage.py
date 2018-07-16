@@ -44,6 +44,8 @@ _DBSESSION = None
 
 def includeme(config):
     registry = config.registry
+    print(registry['dbsession'])
+    print(type(registry['dbsession']))
     registry[STORAGE] = RDBStorage(registry[DBSESSION])
     global _DBSESSION
     _DBSESSION = registry[DBSESSION]

@@ -258,19 +258,27 @@ def index(request):
         # Do the work...
         completed_total = 0
         errors = []
-        uuids, call_cnt = uuid_queue.get_uuids(BATCH_SIZE * 10)
+        get_size = 250000
+        uuids, call_cnt = uuid_queue.get_uuids(get_size)
         while uuids:
             uuids_len = len(uuids)
+            print('**')
+            print('get_uuids', uuids_len, call_cnt)
             print(
                 'updating %d uuids. completed %d of %d' % (
                     uuids_len, completed_total, total
                 ),
-                'errors:', len(errors)
+                'errors:', len(errors),
             )
+            update_start_time = time.time()
             batch_errors = indexer.update_objects(request, uuids, xmin, snapshot_id, restart)
+            print('update time: %0.4f' % (
+                    time.time() - update_start_time,
+                )
+            )
             completed_total += uuids_len - len(batch_errors)
             errors.extend(batch_errors)
-            uuids, call_cnt = uuid_queue.get_uuids(BATCH_SIZE)
+            uuids, call_cnt = uuid_queue.get_uuids(get_size)
         result = state.finish_cycle(result,errors)
 
         if errors:
