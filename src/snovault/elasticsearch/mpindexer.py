@@ -33,6 +33,7 @@ def includeme(config):
     if processes and processes > 1:
         do_log = False
         if asbool(config.registry.settings.get('indexer')):
+            print('Set primary MP indexer in indexer.py')
             do_log = True
         config.registry[INDEXER] = MPIndexer(config.registry, processes=processes, do_log=do_log)
 

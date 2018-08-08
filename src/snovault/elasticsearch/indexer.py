@@ -47,6 +47,7 @@ def includeme(config):
     do_log = False
     if asbool(registry.settings.get('indexer')):
         do_log = True
+        print('Set primary indexer in indexer.py')
     registry[INDEXER] = Indexer(registry, do_log=do_log)
 
 def get_related_uuids(request, es, updated, renamed):
