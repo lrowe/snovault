@@ -30,10 +30,11 @@ def includeme(config):
         processes = int(processes)
     except:
         processes = None
-    do_log = False
-    if asbool(config.registry.settings.get('indexer')):
-        do_log = True
-    config.registry[INDEXER] = MPIndexer(config.registry, processes=processes, do_log=do_log)
+    if processes and processes > 1:
+        do_log = False
+        if asbool(config.registry.settings.get('indexer')):
+            do_log = True
+        config.registry[INDEXER] = MPIndexer(config.registry, processes=processes, do_log=do_log)
 
 
 # Running in subprocess
