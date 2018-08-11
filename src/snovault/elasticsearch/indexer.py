@@ -256,8 +256,11 @@ def indexer_post_cycle(
 
 @view_config(route_name='index_worker', request_method='POST', permission="index")
 def index_worker(request):
-    print('index_worker listener')
-    print('index_worker listener', request.registry.settings.get('indexer_uuids', 'no uuids key']))
+    '''new index worker'''
+    print(
+        'index_worker listener',
+        request.registry.settings.get('indexer_uuids', 'no uuids key')
+    )
     # print(len(request.registry.settings['indexer_uuids']))
     return {}
 
@@ -265,8 +268,11 @@ def index_worker(request):
 # pylint: disable=too-many-statements, too-many-branches, too-many-locals
 @view_config(route_name='index', request_method='POST', permission="index")
 def index(request):
-    print('index listener', request.registry.settings.get('indexer_uuids', 'no uuids key']))
-    '''Indexer Listener'''
+    '''index listener'''
+    print(
+        'index listener',
+        request.registry.settings.get('indexer_uuids', 'no uuids key')
+    )
     index_str = request.registry.settings['snovault.elasticsearch.index']
     request.datastore = 'database'
     record = request.json.get('record', False)
