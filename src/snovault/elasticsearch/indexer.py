@@ -261,7 +261,8 @@ def index_worker(request):
         'index_worker listener',
         len(request.registry.get('indexer_uuids')),
     )
-    run_uuids(request, is_worker=True)
+    if request.registry.get('indexer_uuids'):
+        run_uuids(request, is_worker=True)
     return {}
 
 
