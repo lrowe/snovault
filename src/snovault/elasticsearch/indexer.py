@@ -311,7 +311,7 @@ def index(request):
         if invalidated is None:
             return result
     if invalidated and not dry_run:
-        invalidated = short_indexer(invalidated, max_invalid=2000)
+        invalidated = short_indexer(invalidated, max_invalid=None)
         if stage_for_followup:
             state.prep_for_followup(xmin, invalidated)
         result = state.start_cycle(invalidated, result)
