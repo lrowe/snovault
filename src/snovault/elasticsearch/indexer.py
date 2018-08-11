@@ -279,7 +279,6 @@ def index(request):
     dry_run = request.json.get('dry_run', False)
     recovery = request.json.get('recovery', False)
     elastic_search = request.registry[ELASTIC_SEARCH]
-    indexer = request.registry[INDEXER]
     session = request.registry[DBSESSION]()
     connection = session.connection()
     first_txn = None
@@ -316,22 +315,37 @@ def index(request):
         result = state.start_cycle(invalidated, result)
         for item in invalidated:
             request.registry['indexer_uuids'].append(item)
-        while request.registry['indexer_uuids']:
-            uuid = request.registry['indexer_uuids'].pop()
-            errors = indexer.update_objects(
-                request,
-                [uuid],
-                xmin,
-                snapshot_id,
-                restart
-            )
-            time.sleep(0.01)
+        request.registry['xmin'] = xmin
+        request.registry['snapshot_id'] = snapshot_id
+        request.registry['restart'] = restart
+        request.registry['errors'] = []
+        request.registry['worker_flag'] = False
+        run_uuids(request)
+        errors = request.registry['errors']
         result = state.finish_cycle(result, errors)
         result = indexer_post_cycle(errors, result, record, elastic_search, index_str, flush)
     if first_txn is not None:
         result['txn_lag'] = str(datetime.datetime.now(pytz.utc) - first_txn)
     state.send_notices()
     return result
+
+
+def run_uuids(request, is_worker=False):
+    '''generic run uuids'''
+    print(request.registry['worker_flag'], request.registry['xmin'], request.registry['restart'])
+    while request.registry['indexer_uuids']:
+        uuid = request.registry['indexer_uuids'].pop()
+        run_errors = request.registry[INDEXER].update_objects(
+            request,
+            [uuid],
+            request.registry['xmin'],
+            request.registry['snapshot_id'],
+            asbool(request.registry['restart']),
+        )
+        request.registry['errors'].extend(run_errors)
+        time.sleep(0.01)
+    while not is_worker and request.registry['worker_flag']:
+        time.sleep(0.01)
 
 
 def short_indexer(invalidated, max_invalid=None):
