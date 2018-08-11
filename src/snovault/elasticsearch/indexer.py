@@ -259,7 +259,7 @@ def index_worker(request):
     '''new index worker'''
     print(
         'index_worker listener',
-        request.registry.get('indexer_uuids', 'no uuids key')
+        len(request.registry.get('indexer_uuids')),
     )
     # print(len(request.registry.settings['indexer_uuids']))
     return {}
@@ -311,11 +311,20 @@ def index(request):
             return result
     if invalidated and not dry_run:
         invalidated = short_indexer(invalidated, max_invalid=2000)
-        request.registry['indexer_uuids'] = invalidated
         if stage_for_followup:
             state.prep_for_followup(xmin, invalidated)
         result = state.start_cycle(invalidated, result)
-        errors = indexer.update_objects(request, invalidated, xmin, snapshot_id, restart)
+        for item in invalidated:
+            request.registry['indexer_uuids'].append(item)
+        while request.registry['indexer_uuids']:
+            errors = indexer.update_objects(
+                request,
+                request.registry['indexer_uuids'].pop(),
+                xmin,
+                snapshot_id,
+                restart
+            )
+            time.sleep(0.01)
         result = state.finish_cycle(result, errors)
         result = indexer_post_cycle(errors, result, record, elastic_search, index_str, flush)
     if first_txn is not None:
