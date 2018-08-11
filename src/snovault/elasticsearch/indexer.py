@@ -261,7 +261,7 @@ def index_worker(request):
         'index_worker listener',
         len(request.registry.get('indexer_uuids')),
     )
-    # print(len(request.registry.settings['indexer_uuids']))
+    run_uuids(request, is_worker=True)
     return {}
 
 
@@ -332,7 +332,6 @@ def index(request):
 
 def run_uuids(request, is_worker=False):
     '''generic run uuids'''
-    print(request.registry['worker_flag'], request.registry['xmin'], request.registry['restart'])
     while request.registry['indexer_uuids']:
         uuid = request.registry['indexer_uuids'].pop()
         run_errors = request.registry[INDEXER].update_objects(
