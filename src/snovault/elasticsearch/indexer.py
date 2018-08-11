@@ -42,7 +42,7 @@ MAX_CLAUSES_FOR_ES = 8192
 
 def includeme(config):
     config.add_route('index', '/index')
-    config.add_route('index_worker', '/index')
+    config.add_route('index_worker', '/index_worker')
     config.scan(__name__)
     registry = config.registry
     do_log = False
