@@ -258,6 +258,7 @@ def indexer_post_cycle(
 def index_worker(request):
     print('index_worker listener')
     # print(len(request.registry.settings['indexer_uuids']))
+    return {}
 
 
 # pylint: disable=too-many-statements, too-many-branches, too-many-locals
