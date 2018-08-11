@@ -256,9 +256,10 @@ def indexer_post_cycle(
 
 @view_config(route_name='index_worker', request_method='POST', permission="index")
 def index_worker(request):
-    '''new index worker'''
+    '''new index worker process do not share a registry'''
     print(
-        'index_worker listener',
+        'new index worker process do not share a registry',
+        'need to implement redis queue',
         len(request.registry.get('indexer_uuids')),
     )
     if request.registry.get('indexer_uuids'):
