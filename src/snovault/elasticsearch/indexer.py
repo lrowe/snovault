@@ -42,11 +42,12 @@ MAX_CLAUSES_FOR_ES = 8192
 
 def includeme(config):
     config.add_route('index', '/index')
+    config.add_route('index_worker', '/index_worker')
     config.scan(__name__)
     registry = config.registry
     do_log = False
     if asbool(registry.settings.get('indexer')):
-        do_log = True
+        do_log = False
         print('Set primary indexer in indexer.py')
     registry[INDEXER] = Indexer(registry, do_log=do_log)
     registry['indexer_uuids'] = []
@@ -253,17 +254,33 @@ def indexer_post_cycle(
     return result
 
 
+@view_config(route_name='index_worker', request_method='POST', permission="index")
+def index_worker(request):
+    '''new index worker process do not share a registry'''
+    print(
+        'new index worker process do not share a registry',
+        'need to implement redis queue',
+        len(request.registry.get('indexer_uuids')),
+    )
+    if request.registry.get('indexer_uuids'):
+        run_uuids(request, is_worker=True)
+    return {}
+
+
 # pylint: disable=too-many-statements, too-many-branches, too-many-locals
 @view_config(route_name='index', request_method='POST', permission="index")
 def index(request):
-    '''Indexer Listener'''
+    '''index listener'''
+    print(
+        'index listener',
+        request.registry.get('indexer_uuids', 'no uuids key')
+    )
     index_str = request.registry.settings['snovault.elasticsearch.index']
     request.datastore = 'database'
     record = request.json.get('record', False)
     dry_run = request.json.get('dry_run', False)
     recovery = request.json.get('recovery', False)
     elastic_search = request.registry[ELASTIC_SEARCH]
-    indexer = request.registry[INDEXER]
     session = request.registry[DBSESSION]()
     connection = session.connection()
     first_txn = None
@@ -294,18 +311,42 @@ def index(request):
         if invalidated is None:
             return result
     if invalidated and not dry_run:
-        invalidated = short_indexer(invalidated, max_invalid=100)
-        request.registry['indexer_uuids'] = invalidated
+        invalidated = short_indexer(invalidated, max_invalid=2000)
         if stage_for_followup:
             state.prep_for_followup(xmin, invalidated)
         result = state.start_cycle(invalidated, result)
-        errors = indexer.update_objects(request, invalidated, xmin, snapshot_id, restart)
+        for item in invalidated:
+            request.registry['indexer_uuids'].append(item)
+        request.registry['xmin'] = xmin
+        request.registry['snapshot_id'] = snapshot_id
+        request.registry['restart'] = restart
+        request.registry['errors'] = []
+        request.registry['worker_flag'] = False
+        run_uuids(request)
+        errors = request.registry['errors']
         result = state.finish_cycle(result, errors)
         result = indexer_post_cycle(errors, result, record, elastic_search, index_str, flush)
     if first_txn is not None:
         result['txn_lag'] = str(datetime.datetime.now(pytz.utc) - first_txn)
     state.send_notices()
     return result
+
+
+def run_uuids(request, is_worker=False):
+    '''generic run uuids'''
+    while request.registry['indexer_uuids']:
+        uuid = request.registry['indexer_uuids'].pop()
+        run_errors = request.registry[INDEXER].update_objects(
+            request,
+            [uuid],
+            request.registry['xmin'],
+            request.registry['snapshot_id'],
+            asbool(request.registry['restart']),
+        )
+        request.registry['errors'].extend(run_errors)
+        time.sleep(0.01)
+    while not is_worker and request.registry['worker_flag']:
+        time.sleep(0.01)
 
 
 def short_indexer(invalidated, max_invalid=None):
@@ -337,6 +378,7 @@ def get_current_xmin(request):
     # which is not available in recovery.
     xmin = query.scalar()  # lowest xid that is still in progress
     return xmin
+
 
 class Indexer(object):
     def __init__(self, registry, do_log=False):

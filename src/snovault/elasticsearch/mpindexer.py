@@ -34,9 +34,9 @@ def includeme(config):
         do_log = False
         if asbool(config.registry.settings.get('indexer')):
             print('Set primary MP indexer in indexer.py')
-            do_log = True
+            do_log = False
         config.registry[INDEXER] = MPIndexer(config.registry, processes=processes, do_log=do_log)
-
+    config.registry['indexer_uuids'] = []
 
 # Running in subprocess
 
