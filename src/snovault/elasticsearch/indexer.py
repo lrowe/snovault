@@ -253,9 +253,16 @@ def indexer_post_cycle(
     return result
 
 
+@view_config(route_name='index_worker', request_method='POST', permission="index")
+def index_worker(request):
+    print('index_worker listener')
+    print(len(request.registry.settings['indexer_uuids']))
+
+
 # pylint: disable=too-many-statements, too-many-branches, too-many-locals
 @view_config(route_name='index', request_method='POST', permission="index")
 def index(request):
+    print('index listener')
     '''Indexer Listener'''
     index_str = request.registry.settings['snovault.elasticsearch.index']
     request.datastore = 'database'
@@ -294,7 +301,7 @@ def index(request):
         if invalidated is None:
             return result
     if invalidated and not dry_run:
-        invalidated = short_indexer(invalidated, max_invalid=100)
+        invalidated = short_indexer(invalidated, max_invalid=2000)
         request.registry['indexer_uuids'] = invalidated
         if stage_for_followup:
             state.prep_for_followup(xmin, invalidated)
@@ -337,6 +344,7 @@ def get_current_xmin(request):
     # which is not available in recovery.
     xmin = query.scalar()  # lowest xid that is still in progress
     return xmin
+
 
 class Indexer(object):
     def __init__(self, registry, do_log=False):
