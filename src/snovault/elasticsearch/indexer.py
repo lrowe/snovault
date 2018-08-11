@@ -317,9 +317,10 @@ def index(request):
         for item in invalidated:
             request.registry['indexer_uuids'].append(item)
         while request.registry['indexer_uuids']:
+            uuid = request.registry['indexer_uuids'].pop()
             errors = indexer.update_objects(
                 request,
-                request.registry['indexer_uuids'].pop(),
+                [uuid],
                 xmin,
                 snapshot_id,
                 restart
