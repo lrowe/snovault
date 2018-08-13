@@ -35,10 +35,25 @@ import copy
 import json
 import requests
 
+from .uuid_queue import (
+    UuidQueue,
+    UuidQueueTypes,
+    UuidQueueWorker,
+)
+
+
 es_logger = logging.getLogger("elasticsearch")
 es_logger.setLevel(logging.ERROR)
 log = logging.getLogger(__name__)
 MAX_CLAUSES_FOR_ES = 8192
+QUEUE_NAME = 'esw-queue'
+# QUEUE_TYPE = UuidQueueTypes.AWS_SQS
+QUEUE_TYPE = UuidQueueTypes.REDIS_LIST_PIPE
+CLIENT_OPTIONS = {}
+QUEUE_OPTIONS = {}
+BATCH_SIZE = 100
+BATCH_GET_SIZE = 100
+
 
 def includeme(config):
     config.add_route('index', '/index')
@@ -314,22 +329,48 @@ def index(request):
         invalidated = short_indexer(invalidated, max_invalid=2000)
         if stage_for_followup:
             state.prep_for_followup(xmin, invalidated)
+        uuid_queue = get_server_queue(invalidated, xmin, snapshot_id, restart)
         result = state.start_cycle(invalidated, result)
-        for item in invalidated:
-            request.registry['indexer_uuids'].append(item)
-        request.registry['xmin'] = xmin
-        request.registry['snapshot_id'] = snapshot_id
-        request.registry['restart'] = restart
-        request.registry['errors'] = []
-        request.registry['worker_flag'] = False
-        run_uuids(request)
-        errors = request.registry['errors']
+        while uuid_queue.not_finished():
+            time.sleep(1.0)
+        errors = uuid_queue.get_errors()
         result = state.finish_cycle(result, errors)
         result = indexer_post_cycle(errors, result, record, elastic_search, index_str, flush)
     if first_txn is not None:
         result['txn_lag'] = str(datetime.datetime.now(pytz.utc) - first_txn)
     state.send_notices()
     return result
+
+
+def get_server_queue(invalidated, xmin, snapshot_id, restart):
+    '''Create and load new server queue'''
+    total = len(invalidated)
+    print('Loading %d uuids to aws' % total)
+    load_time_start = time.time()
+    queue_args = {
+        'batch_by': BATCH_SIZE,
+        'uuid_len': 36,
+        'xmin': xmin,
+        'host': 'localhost',
+        'port': '9250',
+        'snapshot_id': snapshot_id,
+        'restart': restart,
+    }
+    uuid_queue = UuidQueue(
+        QUEUE_NAME,
+        QUEUE_TYPE,
+        copy.copy(queue_args),
+    )
+    failed, success_cnt, call_cnt = uuid_queue.load_uuids(invalidated)
+    print(
+        'Loaded %d uuids to %s in %0.4f.  Load Batch: %d'
+        '\n\tfailed %d, success_cnt %d, call_cnt: %d'
+        ''% (
+            total, QUEUE_TYPE, time.time() - load_time_start, BATCH_SIZE,
+            len(failed), success_cnt, call_cnt,
+        )
+    )
+    return uuid_queue
 
 
 def run_uuids(request, is_worker=False):

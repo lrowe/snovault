@@ -1,7 +1,9 @@
-import boto3
+'''Aws uuid queue'''
 import time
+import boto3
 
 from .base_queue import UuidBaseQueue
+from .base_queue import UuidBaseQueueMeta
 
 
 AWS_SQS = 'AWS_SQS'
@@ -30,21 +32,21 @@ class AwsClient(object):
     allowed_create_waits = 1
 
     def __init__(self, args):
-        profile_name = args.pop('profile_name', 'default')
-        session = boto3.session.Session(profile_name=profile_name)
+        session = boto3.session.Session(profile_name=args['profile_name'])
         self._client = session.client('sqs')
 
     @classmethod
     def purge(cls, queue, retry=True):
+        '''Remove aws queue'''
         try:
             res = queue.purge()
             if not _check_status_code(res):
                 raise ValueError('AwsSqsQueue.purge() Failed:' + str(res))
-        except cls.exceptions.PurgeQueueInProgress as ecp:
+        except cls.exceptions.PurgeQueueInProgress as ecp:  # pylint: disable=no-member
             if retry:
                 print('Waiting 65 seconds due to PurgeQueueInProgress')
                 time.sleep(65)
-                cls.purge(retry=False)
+                cls.purge(queue, retry=False)
             raise ecp
 
     def _create_queue(self, queue_name, args):
@@ -54,8 +56,8 @@ class AwsClient(object):
                 Attributes=args
             )
         except self._client.exceptions.QueueDeletedRecently:
-            if allowed_create_waits:
-                allowed_create_waits -= 1
+            if self.allowed_create_waits:
+                self.allowed_create_waits -= 1
                 print('Waiting 65 seconds due to QueueDeletedRecently')
                 time.sleep(65)
                 return self._create_queue(queue_name, args)
@@ -70,13 +72,14 @@ class AwsClient(object):
             res = {}
         if res.get('QueueUrl'):
             return res['QueueUrl']
+        return None
 
     def get_queue(self, queue_name, queue_type, queue_options):
+        '''Get queue from AWS, creates if does not exist'''
         if queue_type == AWS_SQS:
             queue_url = self._get_queue_url(queue_name)
             if not queue_url:
-                attributes = queue_options.get('attributes', {})
-                if self._create_queue(queue_name, queue_options):
+                if self._create_queue(queue_name, queue_options['attributes']):
                     queue_url = self._get_queue_url(queue_name)
             if not queue_url:
                 raise ValueError(
@@ -88,6 +91,11 @@ class AwsClient(object):
             raise ValueError('Queue %s is not available' % queue_type)
 
 
+class AwsSqsQueueMeta(UuidBaseQueueMeta):
+
+    def purge_meta(self):
+        print('AwsSqsQueueMeta.purge')
+
 class AwsSqsQueue(UuidBaseQueue):
     _max_entry_values = 10  # AWS limitation on message per entry.  May 2018.
     max_value_size = 262144  # AWS SQS Limit for single and batches. May 2018
@@ -97,6 +105,7 @@ class AwsSqsQueue(UuidBaseQueue):
         resource = boto3.resource('sqs')
         self.queue = resource.Queue(queue_url)
         self.queue_name = queue_name
+        self.qmeta = AwsSqsQueueMeta()
 
     # Add Values
     def _add_value(self, entries):
@@ -195,11 +204,9 @@ class AwsSqsQueue(UuidBaseQueue):
         return values, call_cnt
 
     # Other
-    def purge(self, counter=0):
+    def purge(self):
         '''
         Clear all values from AWS SQS queue
         - Pass to the AwsClient because client has access to exceptions
-        - The counter arg allows the function to wait until the purge
-        exceptions has cleared.
         '''
-        super().purge(self.queue, counter=counter)
+        AwsClient.purge(self.queue)

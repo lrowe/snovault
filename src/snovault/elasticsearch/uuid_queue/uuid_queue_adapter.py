@@ -43,7 +43,7 @@ worker is the base class and has limited functionality.
     and be the lenth specified in uuid_len.
 
 """
-import time
+import copy
 
 from .aws_queues import AwsClient
 from .aws_queues import AWS_SQS
@@ -132,7 +132,7 @@ class UuidQueueWorker(object):
     '''
     UuidQueueWorker is the base class for the UuidQueue
 
-    * Here you will find the majority of initialization for both Classes,
+    * The initialization is for both sever and client queuea little backwardsHere you will find the majority of initialization for both Classes,
     including creating of the queue client.
     * Also the get_uuids functionality is here since both types of queue
     need to get uuids.
@@ -143,29 +143,67 @@ class UuidQueueWorker(object):
     uuids is not evenly divisible by batch_by.  The number returned could
     be a little more or less than asked for.
     '''
-    def __init__(self, queue_name, queue_type, args):
-        self._batch_by = args.pop('batch_by', 1)
-        self.uuid_len = args.pop('uuid_len', 36)
+    def __init__(self, queue_name, queue_type, args, is_server=False):
+        client_args = {}
+        queue_options = {}
         if not UuidQueueTypes.check_queue_type(queue_type):
             raise ValueError('UuidQueueTypes type %s not handled' % queue_type)
         if UuidQueueTypes.BASE_IN_MEMORY == queue_type:
+            if not is_server:
+                raise TypeError(
+                    'Not allowed to create a UuidQueueWorker of type %s.'
+                    '  Server and worker must be the same for this type.' % (
+                        queue_type,
+                    )
+                )
             client_cls = BaseClient
         elif UuidQueueTypes.AWS_SQS == queue_type:
+            client_args['profile_name'] = args.pop('profile_name', 'default')
+            queue_options['attributes'] = {}
             client_cls = AwsClient
         else:
             client_cls = RedisClient
-        self._client = client_cls(args)
-        self._queue = self._client.get_queue(queue_name, queue_type, args)
+            client_args['host'] = args.pop('host', 'localhost')
+            client_args['port'] = args.pop('port', '6379')
+        client = client_cls(client_args)
+        self._queue = client.get_queue(queue_name, queue_type, queue_options)
+        if is_server:
+            args['batch_by'] = args.get('batch_by', 1)
+            args['uuid_len'] = args.get('uuid_len', 36)
+            self._queue.qmeta.set_run_args(args)
+        run_args = self._queue.qmeta.get_run_args()
+        self._batch_by = run_args['batch_by']
+        self.restart = run_args['restart']
+        self.snapshot_id = run_args['snapshot_id']
+        self.uuid_len = run_args['uuid_len']
+        self.xmin = run_args['xmin']
 
     @property
     def queue_name(self):
+        '''Getter for queue name'''
         return self._queue.queue_name
 
     @property
     def queue_type(self):
+        '''Getter for queue type'''
         return self._queue.queue_type
 
+    def _add_batch_to_qmeta(self, uuids):
+        '''Save batch data to queue meta as they are removed'''
+        batch_id = self._queue.qmeta.add_batch(uuids)
+        return batch_id
+
+    def add_finished(self, batch_id, successes, errors):
+        '''Update queue with consumed uuids'''
+        self._queue.qmeta.add_finished(batch_id, successes, errors)
+
+    def get_errors(self):
+        '''Get all errors from queue that were sent in add_finished'''
+        errors = self._queue.qmeta.get_errors()
+        return errors
+
     def get_uuids(self, get_count=1):
+        '''Get uuids as specified by get_count'''
         uuids = []
         call_cnt = 0
         if self._batch_by == 1:
@@ -175,26 +213,66 @@ class UuidQueueWorker(object):
                 batch_get_count = 1
             else:
                 batch_get_count = ((get_count + 1)//self._batch_by) + 1
-            combined_uuids_list, call_cnt = self._queue.get_values(batch_get_count)
+            combined_uuids_list, call_cnt = self._queue.get_values(
+                batch_get_count
+            )
             for combined_uuids in combined_uuids_list:
-                uncombined_uuids = _get_uncombined_uuids(self.uuid_len, combined_uuids)
+                uncombined_uuids = _get_uncombined_uuids(
+                    self.uuid_len,
+                    combined_uuids,
+                )
                 uuids.extend(uncombined_uuids)
-        return uuids, call_cnt
+        batch_id = None
+        if uuids:
+            batch_id = self._add_batch_to_qmeta(uuids)
+        return batch_id, uuids, call_cnt
+
+    def is_finished(self, max_age_secs=4999):
+        '''Check if queue has been consumed'''
+        readded, is_done = self._queue.qmeta.is_finished(
+            max_age_secs=max_age_secs
+        )
+        return readded, is_done
+
+    def queue_running(self):
+        '''Get stop flag for queue'''
+        return self._queue.qmeta.is_server_running()
 
 
 class UuidQueue(UuidQueueWorker):
     '''
     Indexer to Queue Adapter / Manager
 
-    * UuidQueueWorker should hold functionality needed for client and server.
-    * This Class should have expanded capabilities need for a uuid server.
+    * Child class of UuidQueueWorker
+    * Expands functionality so allow
+        - Loading of uuids
+        - Purging the queue
+        - Updating the meta data added count
+        - Setting the meta data stop flag to tell workers to stop
     '''
     def __init__(self, queue_name, queue_type, args):
-        self._xmin = args.pop('xmin', None)
-        self._snapshot_id = args.pop('snapshot_id', None)
-        super().__init__(queue_name, queue_type, args)
+        super().__init__(queue_name, queue_type, args, is_server=True)
 
-    def load_uuids(self, uuids):
+    def _update_qmeta_count(self, count):
+        '''
+        Update the queue meta data uuids count when loaded
+
+        - Could be negative when updating for readded uuids
+        '''
+        self._queue.qmeta.values_added(count)
+
+    def _set_qmeta_stop_flag(self):
+        '''Set queue meta data stop flag'''
+        self._queue.qmeta.set_to_not_running()
+
+    def load_uuids(self, uuids, readded=False):
+        '''
+        Load uuids into queue.
+
+        * Will be batched by specified batch_by
+        * readded are uuids that will be put back into the queue
+            - queue meta add count needs to be fixed
+        '''
         failed = []
         bytes_added = 0
         success_cnt = 0
@@ -208,11 +286,20 @@ class UuidQueue(UuidQueueWorker):
                 self._queue.max_value_size,
                 uuids,
             )
-            failed, bytes_added, call_cnt  = self._queue.add_values(
+            failed, bytes_added, call_cnt = self._queue.add_values(
                 combined_uuids_gen
             )
         success_cnt = bytes_added//self.uuid_len
+        if readded:
+            self._update_qmeta_count(-1 * len(uuids))
+        self._update_qmeta_count(success_cnt)
         return failed, success_cnt, call_cnt
 
     def purge(self):
+        '''Clear Queue'''
         self._queue.purge()
+        self._queue.qmeta.purge_meta()
+
+    def stop(self):
+        '''Parent processes has determined the queue has been consume'''
+        self._set_qmeta_stop_flag()
