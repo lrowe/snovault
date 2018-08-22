@@ -401,7 +401,7 @@ class Indexer(object):
                 )
         return es_infos, es_err_msg
 
-    def update_object(self, request, uuid, xmin, restart=False):
+    def update_object(self, request, uuid, xmin, restart=False, pid=None):
         '''Get embed doc to index in elastic search, return run info'''
         request.datastore = 'database'  # required by 2-step indexer
         output = {
@@ -410,6 +410,7 @@ class Indexer(object):
             'end_timestamp': None,
             'error_message': None,
             'es_infos': [],
+            'pid': pid,
             'restart': restart,
             'start_time': time.time(),
             'start_timestamp': datetime.datetime.now().isoformat(),

@@ -1,3 +1,4 @@
+import os
 from snovault import DBSESSION
 from contextlib import contextmanager
 from multiprocessing import get_context
@@ -107,10 +108,18 @@ def snapshot(xmin, snapshot_id):
 
 def update_object_in_snapshot(args):
     uuid, xmin, snapshot_id, restart = args
+    pid = os.getpid()
     with snapshot(xmin, snapshot_id):
         request = get_current_request()
         indexer = request.registry[INDEXER]
-        return indexer.update_object(request, uuid, xmin, restart)
+        outputs, errors = indexer.update_object(
+            request,
+            uuid,
+            xmin,
+            restart=restart,
+            pid=pid,
+        )
+        return outputs, errors
 
 
 # Running in main process
@@ -147,22 +156,36 @@ class MPIndexer(Indexer):
 
         tasks = [(uuid, xmin, snapshot_id, restart) for uuid in uuids]
         errors = []
+        outputs = [
+            {
+                'chunkiness': chunkiness,
+                'name': 'mpinfo',
+                'processes': workers,
+                'uuid_count': uuid_count,
+
+            }
+        ]
         try:
-            for i, output in enumerate(self.pool.imap_unordered(update_object_in_snapshot, tasks, chunkiness)):
-                self._indexer_log.append_output(output)
-                if output:
-                    if output['error_message'] is not None:
-                        errors.append({
-                            'error_message': output['error_message'],
-                            'timestamp': output['end_timestamp'],
-                            'uuid': output['uuid'],
-                        })
+            for i, output in enumerate(
+                    self.pool.imap_unordered(
+                        update_object_in_snapshot,
+                        tasks,
+                        chunkiness
+                    )
+                ):
+                outputs.append(output)
+                if output['error_message']:
+                    errors.append({
+                        'error_message': output['error_message'],
+                        'timestamp': output['end_timestamp'],
+                        'uuid': output['uuid'],
+                    })
                 if (i + 1) % 50 == 0:
                     log.info('Indexing %d', i + 1)
         except:
             self.shutdown()
             raise
-        return errors
+        return outputs, errors
 
     def shutdown(self):
         if 'pool' in self.__dict__:
