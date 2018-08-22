@@ -228,6 +228,7 @@ def index(request):
                     snapshot_id = connection.execute('SELECT pg_export_snapshot();').scalar()
 
     if invalidated and not dry_run:
+        invalidated = short_indexer(invalidated, max_invalid=100)
         if len(stage_for_followup) > 0:
             # Note: undones should be added before, because those uuids will (hopefully) be indexed in this cycle
             state.prep_for_followup(xmin, invalidated)
@@ -269,6 +270,15 @@ def index(request):
 
     state.send_notices()
     return result
+
+
+def short_indexer(invalidated, max_invalid=None):
+    invalid = []
+    for item in invalidated:
+         invalid.append(item)
+         if max_invalid and len(invalid) >= max_invalid:
+             break
+    return invalid
 
 
 def get_current_xmin(request):
