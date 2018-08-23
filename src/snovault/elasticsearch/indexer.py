@@ -1,4 +1,5 @@
 import os
+import pickle
 import sys
 from elasticsearch.exceptions import (
     ConflictError,
@@ -369,6 +370,10 @@ def get_current_xmin(request):
     xmin = query.scalar()  # lowest xid that is still in progress
     return xmin
 
+
+
+
+
 class Indexer(object):
     def __init__(self, registry, do_log=False):
         self.es = registry[ELASTIC_SEARCH]
@@ -394,10 +399,9 @@ class Indexer(object):
         }
         try:
             doc = request.embed(info_dict['url'], as_user='INDEXER')
-            print(doc)
+            print(doc, '')
             print('doc', type(doc))
-            for key, val in doc.items():
-                print(key, type(val), val)
+            print(pickle.dumps(doc), '')
             # info_dict['doc_size'] = sys.getsizeof(json.dumps(doc))
         except Exception as ecp:  # pylint: disable=broad-except
             info_dict['exception_type'] = 'Embed Exception'
