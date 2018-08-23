@@ -298,7 +298,7 @@ def indexer_updater(
                 elastic_search.indices.flush_synced(index='_all')  # Faster recovery on ES restart
             except ConflictError:
                 pass
-        file_path = 'log-tests/xmin%s-cnt%d-size%d-tlt%d.json' % (
+        file_path = 'xmin%s-cnt%d-size%d-tlt%d.json' % (
             str(xmin),
             batch_cnt,
             batch_size,
@@ -325,7 +325,7 @@ def dump_output_to_file(file_path, outputs, out_size=100000):
         else:
             out = outputs[:]
             outputs = []
-        next_file_path = str(path_index) + '-' + file_path
+        next_file_path = 'log-test/' + str(path_index) + '-' + file_path
         print(next_file_path, len(out))
         with open(next_file_path, 'w') as file_handler:
             # json.dump(out, file_handler, indent=4, separators=(',', ': '))
