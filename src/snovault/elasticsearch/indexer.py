@@ -372,6 +372,18 @@ def get_current_xmin(request):
 
 
 
+def _serial_dict(in_dict):
+    '''recurize serial dict'''
+    for key, val in in_dict.items():
+        if isinstance(val, dict):
+            in_dict[key] = _serial_dict(val)
+        elif isinstance(val, set):
+            in_dict[key] = list(val)
+        elif isinstance(val, frozenset):
+            in_dict[key] = list(val)
+    return in_dict
+
+
 
 
 class Indexer(object):
@@ -399,10 +411,7 @@ class Indexer(object):
         }
         try:
             doc = request.embed(info_dict['url'], as_user='INDEXER')
-            print(doc, '')
-            print('doc', type(doc))
-            print(pickle.dumps(doc), '')
-            # info_dict['doc_size'] = sys.getsizeof(json.dumps(doc))
+            info_dict['doc_size'] = sys.getsizeof(_serial_dict(doc))
         except Exception as ecp:  # pylint: disable=broad-except
             info_dict['exception_type'] = 'Embed Exception'
             info_dict['exception'] = repr(ecp)
