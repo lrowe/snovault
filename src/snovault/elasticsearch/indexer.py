@@ -252,46 +252,70 @@ def indexer_updater(
         result, xmin, snapshot_id, restart, record, index_str, elastic_search, flush,
     ):  # pylint: disable=too-many-locals, too-many-arguments
     '''Indexing work part'''
-    invalidated = short_indexer(invalidated, max_invalid=100)
-    if stage_for_followup:
-        state.prep_for_followup(xmin, invalidated)
-    result = state.start_cycle(invalidated, result)
-    outputs, errors = indexer.update_objects(request, invalidated, xmin, snapshot_id, restart)
-    result = state.finish_cycle(result, errors)
-    if errors:
-        result['errors'] = errors
-    if record:
-        try:
-            elastic_search.index(index=index_str, doc_type='meta', body=result, id='indexing')
-        except:  # pylint: disable=bare-except
-            error_messages = copy.deepcopy(result['errors'])
-            del result['errors']
-            elastic_search.index(index=index_str, doc_type='meta', body=result, id='indexing')
-            for item in error_messages:
-                if 'error_message' in item:
-                    log.error(
-                        'Indexing error for %s, error message: %s',
-                        item['uuid'],
-                        item['error_message'],
-                    )
-                    item['error_message'] = "Error occured during indexing, check the logs"
-            result['errors'] = error_messages
-    elastic_search.indices.refresh('_all')
-    if flush:
-        try:
-            elastic_search.indices.flush_synced(index='_all')  # Faster recovery on ES restart
-        except ConflictError:
-            pass
-    file_path = '%d-output-%s.json' % (len(invalidated), str(xmin))
-    dump_output_to_file(file_path, outputs)
+    short_size = 100  # None implies all
+    batch_size = 10  # None implies all
+    invalidated = short_indexer(invalidated, max_invalid=short_size)
+    len_invalid = len(invalidated)
+    if batch_size is None:
+        batch_size = len(invalidated)
+    if batch_size > len_invalid:
+        batch_size = len_invalid
+    batch_cnt = 0
+    while invalidated:
+        batch_cnt += 1
+        batch_invalidated = invalidated[:batch_size]
+        print('s', len(invalidated), len(batch_invalidated))
+        invalidated = invalidated[batch_size:]
+        print('f', len(invalidated))
+        if stage_for_followup:
+            state.prep_for_followup(xmin, batch_invalidated)
+        result = state.start_cycle(batch_invalidated, result)
+        outputs, errors = indexer.update_objects(
+            request, batch_invalidated, xmin, snapshot_id, restart
+        )
+        result = state.finish_cycle(result, errors)
+        if errors:
+            result['errors'] = errors
+        if record:
+            try:
+                elastic_search.index(index=index_str, doc_type='meta', body=result, id='indexing')
+            except:  # pylint: disable=bare-except
+                error_messages = copy.deepcopy(result['errors'])
+                del result['errors']
+                elastic_search.index(index=index_str, doc_type='meta', body=result, id='indexing')
+                for item in error_messages:
+                    if 'error_message' in item:
+                        log.error(
+                            'Indexing error for %s, error message: %s',
+                            item['uuid'],
+                            item['error_message'],
+                        )
+                        item['error_message'] = "Error occured during indexing, check the logs"
+                result['errors'] = error_messages
+        elastic_search.indices.refresh('_all')
+        if flush:
+            try:
+                elastic_search.indices.flush_synced(index='_all')  # Faster recovery on ES restart
+            except ConflictError:
+                pass
+        file_path = 'xmin%s-cnt%d-size%d-tlt%d.json' % (
+            str(xmin),
+            batch_cnt,
+            batch_size,
+            len_invalid,
+        )
+        dump_output_to_file(
+            file_path,
+            outputs,
+            out_size=batch_size,
+        )
     return result
 
 
-def dump_output_to_file(file_path, outputs):
+def dump_output_to_file(file_path, outputs, out_size=100000):
     '''For Debug, dump indexer updates objects to file'''
     print('start', file_path)
     print('dump_output_to_file', len(outputs))
-    out_size = 10000
     path_index = 0
     while outputs:
         path_index += 1
