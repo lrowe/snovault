@@ -387,6 +387,8 @@ class Indexer(object):
                 doc_err_msg = (
                     'Get embed for doc failed on backoff %d' % backoff
                 )
+            else:
+                break
         return doc, doc_infos, doc_err_msg
 
     def _backoff_index_doc(self, doc, uuid, xmin):
@@ -400,6 +402,8 @@ class Indexer(object):
                 es_err_msg = (
                     'Index doc failed on backoff %d' % backoff
                 )
+            else:
+                break
         return es_infos, es_err_msg
 
     def update_object(self, request, uuid, xmin, restart=False, pid=None):
