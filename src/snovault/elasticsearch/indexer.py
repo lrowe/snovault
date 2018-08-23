@@ -235,48 +235,55 @@ def index(request):
                     snapshot_id = connection.execute('SELECT pg_export_snapshot();').scalar()
 
     if invalidated and not dry_run:
-        invalidated = short_indexer(invalidated, max_invalid=250000)
-        if len(stage_for_followup) > 0:
-            # Note: undones should be added before, because those uuids will (hopefully) be indexed in this cycle
-            state.prep_for_followup(xmin, invalidated)
-
-        result = state.start_cycle(invalidated, result)
-
-        # Do the work...
-
-        outputs, errors = indexer.update_objects(request, invalidated, xmin, snapshot_id, restart)
-        result = state.finish_cycle(result,errors)
-
-        if errors:
-            result['errors'] = errors
-
-        if record:
-            try:
-                es.index(index=INDEX, doc_type='meta', body=result, id='indexing')
-            except:
-                error_messages = copy.deepcopy(result['errors'])
-                del result['errors']
-                es.index(index=INDEX, doc_type='meta', body=result, id='indexing')
-                for item in error_messages:
-                    if 'error_message' in item:
-                        log.error('Indexing error for {}, error message: {}'.format(item['uuid'], item['error_message']))
-                        item['error_message'] = "Error occured during indexing, check the logs"
-                result['errors'] = error_messages
-
-
-        es.indices.refresh('_all')
-        if flush:
-            try:
-                es.indices.flush_synced(index='_all')  # Faster recovery on ES restart
-            except ConflictError:
-                pass
-        file_path = '%d-output-%s.json' % (len(invalidated), str(xmin))
-        dump_output_to_file(file_path, outputs)
+        result = indexer_updater(
+            request, invalidated, stage_for_followup, state, indexer,
+            result, xmin, snapshot_id, restart, record, INDEX, es, flush,
+        )
 
     if first_txn is not None:
         result['txn_lag'] = str(datetime.datetime.now(pytz.utc) - first_txn)
 
     state.send_notices()
+    return result
+
+
+def indexer_updater(
+        request, invalidated, stage_for_followup, state, indexer,
+        result, xmin, snapshot_id, restart, record, INDEX, elastic_search, flush,
+    ):  # pylint: disable=too-many-locals, too-many-arguments
+    '''Indexing work part'''
+    invalidated = short_indexer(invalidated, max_invalid=100)
+    if stage_for_followup:
+        state.prep_for_followup(xmin, invalidated)
+    result = state.start_cycle(invalidated, result)
+    outputs, errors = indexer.update_objects(request, invalidated, xmin, snapshot_id, restart)
+    result = state.finish_cycle(result, errors)
+    if errors:
+        result['errors'] = errors
+    if record:
+        try:
+            elastic_search.index(index=INDEX, doc_type='meta', body=result, id='indexing')
+        except:  # pylint: disable=bare-except
+            error_messages = copy.deepcopy(result['errors'])
+            del result['errors']
+            elastic_search.index(index=INDEX, doc_type='meta', body=result, id='indexing')
+            for item in error_messages:
+                if 'error_message' in item:
+                    log.error(
+                        'Indexing error for %s, error message: %s',
+                        item['uuid'],
+                        item['error_message'],
+                    )
+                    item['error_message'] = "Error occured during indexing, check the logs"
+            result['errors'] = error_messages
+    elastic_search.indices.refresh('_all')
+    if flush:
+        try:
+            elastic_search.indices.flush_synced(index='_all')  # Faster recovery on ES restart
+        except ConflictError:
+            pass
+    file_path = '%d-output-%s.json' % (len(invalidated), str(xmin))
+    dump_output_to_file(file_path, outputs)
     return result
 
 
