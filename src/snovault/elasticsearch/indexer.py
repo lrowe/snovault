@@ -281,6 +281,7 @@ def index(request):
 
 def dump_output_to_file(output, file_path):
     '''For Debug, dump indexer updates objects to file'''
+    print(file_path)
     print('dump_output_to_file', len(output))
     with open(file_path, 'w') as file_handler:
         json.dump(output, file_handler, indent=4, separators=(',', ': '))
