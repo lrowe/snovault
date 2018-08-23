@@ -314,8 +314,8 @@ def indexer_updater(
 
 def dump_output_to_file(file_path, outputs, out_size=100000):
     '''For Debug, dump indexer updates objects to file'''
-    print('start', file_path)
-    print('dump_output_to_file', len(outputs))
+    # print('start', file_path)
+    # print('dump_output_to_file', len(outputs))
     path_index = 0
     while outputs:
         path_index += 1
@@ -330,7 +330,7 @@ def dump_output_to_file(file_path, outputs, out_size=100000):
             str(path_index),
             file_path,
         )
-        print(next_file_path, len(out))
+        # print(next_file_path, len(out))
         with open(next_file_path, 'w') as file_handler:
             # json.dump(out, file_handler, indent=4, separators=(',', ': '))
             json.dump(out, file_handler)
