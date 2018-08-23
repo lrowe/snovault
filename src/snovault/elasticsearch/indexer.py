@@ -307,7 +307,7 @@ def indexer_updater(
         dump_output_to_file(
             file_path,
             outputs,
-            out_size=batch_size,
+            out_size=batch_size + 1,
         )
     return result
 
@@ -325,7 +325,7 @@ def dump_output_to_file(file_path, outputs, out_size=100000):
         else:
             out = outputs[:]
             outputs = []
-        next_file_path = 'log-test/' + str(path_index) + '-' + file_path
+        next_file_path = '/srv/encoded/develop/snovault/log-test/' + str(path_index) + '-' + file_path
         print(next_file_path, len(out))
         with open(next_file_path, 'w') as file_handler:
             # json.dump(out, file_handler, indent=4, separators=(',', ': '))
