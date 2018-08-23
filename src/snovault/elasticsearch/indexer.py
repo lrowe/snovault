@@ -410,7 +410,7 @@ class Indexer(object):
     def _index_doc(self, doc, uuid, xmin, backoff=None):
         info_dict = {
             'backoff': backoff,
-            'doc_size': sys.getsizeof(doc),
+            'doc_size': sys.getsizeof(json.dumps(doc)),
             'exception': None,
             'exception_type': None,
             'failed': False,
