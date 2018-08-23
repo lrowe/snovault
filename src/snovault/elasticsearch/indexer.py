@@ -235,7 +235,7 @@ def index(request):
                     snapshot_id = connection.execute('SELECT pg_export_snapshot();').scalar()
 
     if invalidated and not dry_run:
-        invalidated = short_indexer(invalidated, max_invalid=100)
+        invalidated = short_indexer(invalidated, max_invalid=100000)
         if len(stage_for_followup) > 0:
             # Note: undones should be added before, because those uuids will (hopefully) be indexed in this cycle
             state.prep_for_followup(xmin, invalidated)
@@ -284,7 +284,7 @@ def dump_output_to_file(file_path, outputs):
     '''For Debug, dump indexer updates objects to file'''
     print('start', file_path)
     print('dump_output_to_file', len(outputs))
-    out_size = 10
+    out_size = 10000
     path_index = 0
     while outputs:
         path_index += 1
@@ -294,10 +294,11 @@ def dump_output_to_file(file_path, outputs):
         else:
             out = outputs[:]
             outputs = []
-        file_path = str(path_index) + '-' + file_path
-        print(file_path, len(out))
-        with open(file_path, 'w') as file_handler:
-            json.dump(out, file_handler, indent=4, separators=(',', ': '))
+        next_file_path = str(path_index) + '-' + file_path
+        print(next_file_path, len(out))
+        with open(next_file_path, 'w') as file_handler:
+            # json.dump(out, file_handler, indent=4, separators=(',', ': '))
+            json.dump(out, file_handler)
 
 
 def short_indexer(invalidated, max_invalid=None):
