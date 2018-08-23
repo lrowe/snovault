@@ -190,7 +190,7 @@ class MPIndexer(Indexer):
             self.shutdown()
             raise
         info_dict['end_time'] = time.time()
-        outputs.appened(info_dict)
+        outputs.append(info_dict)
         return outputs, errors
 
     def shutdown(self):

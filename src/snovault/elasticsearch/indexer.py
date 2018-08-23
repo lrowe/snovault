@@ -529,7 +529,7 @@ class Indexer(object):
             if (i + 1) % 50 == 0:
                 log.info('Indexing %d', i + 1)
         info_dict['end_time'] = time.time()
-        outputs.appened(info_dict)
+        outputs.append(info_dict)
         return outputs, errors
 
     def shutdown(self):
