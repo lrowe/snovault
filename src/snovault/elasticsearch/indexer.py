@@ -253,14 +253,15 @@ def indexer_updater(
         result, xmin, snapshot_id, restart, record, index_str, elastic_search, flush,
     ):  # pylint: disable=too-many-locals, too-many-arguments
     '''Indexing work part'''
-    short_size = 250000  # None implies all
-    batch_size = 100000  # None implies all
-    invalidated = short_indexer(invalidated, max_invalid=short_size)
+    start = 200000  # None implies all
+    end = 300000  # None implies all
+    invalidated = short_indexer(
+        invalidated,
+        start=start,
+        end=end,
+    )
     len_invalid = len(invalidated)
-    if batch_size is None:
-        batch_size = len(invalidated)
-    if batch_size > len_invalid:
-        batch_size = len_invalid
+    batch_size = (end - start) // 10
     batch_cnt = 0
     while invalidated:
         batch_cnt += 1
@@ -335,13 +336,16 @@ def dump_output_to_file(file_path, outputs, out_size=100000):
             json.dump(out, file_handler)
 
 
-def short_indexer(invalidated, max_invalid=None):
+def short_indexer(invalidated, start=None, end=None):
     '''For Debug, shorten invalidated and make list'''
     invalid = []
+    curr = 0
     for item in invalidated:
-         invalid.append(item)
-         if max_invalid and len(invalid) >= max_invalid:
-             break
+        if curr >= start:
+            invalid.append(item)
+        curr += 1
+        if curr >= end:
+            break
     return invalid
 
 
