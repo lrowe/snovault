@@ -262,6 +262,8 @@ def indexer_updater(
     )
     len_invalid = len(invalidated)
     batch_size = (end - start) // 10
+    if batch_size == 0:
+        batch_size = 1
     batch_cnt = 0
     while invalidated:
         batch_cnt += 1
@@ -519,6 +521,7 @@ class Indexer(object):
             'end_time': None,
         }
         outputs = []
+        print(uuids)
         for i, uuid in enumerate(uuids):
             output = self.update_object(request, uuid, xmin, restart=restart)
             outputs.append(output)
