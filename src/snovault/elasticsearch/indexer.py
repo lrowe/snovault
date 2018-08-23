@@ -1,4 +1,5 @@
 import os
+import sys
 from elasticsearch.exceptions import (
     ConflictError,
     ConnectionError,
@@ -405,6 +406,7 @@ class Indexer(object):
     def _index_doc(self, doc, uuid, xmin, backoff=None):
         info_dict = {
             'backoff': backoff,
+            'doc_size': sys.getsizeof(doc),
             'exception': None,
             'exception_type': None,
             'failed': False,
