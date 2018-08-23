@@ -46,7 +46,7 @@ def includeme(config):
     registry = config.registry
     do_log = False
     if asbool(registry.settings.get('indexer')):
-        do_log = True
+        do_log = False
         print('Set primary indexer in indexer.py')
     registry[INDEXER] = Indexer(registry, do_log=do_log)
 
@@ -234,7 +234,7 @@ def index(request):
                     snapshot_id = connection.execute('SELECT pg_export_snapshot();').scalar()
 
     if invalidated and not dry_run:
-        invalidated = short_indexer(invalidated, max_invalid=100)
+        invalidated = short_indexer(invalidated, max_invalid=1)
         if len(stage_for_followup) > 0:
             # Note: undones should be added before, because those uuids will (hopefully) be indexed in this cycle
             state.prep_for_followup(xmin, invalidated)
@@ -281,6 +281,7 @@ def index(request):
 
 def dump_output_to_file(output, file_path):
     '''For Debug, dump indexer updates objects to file'''
+    print('dump_output_to_file', len(output))
     with open(file_path, 'w') as file_handler:
         json.dump(output, file_handler, indent=4, separators=(',', ': '))
 
