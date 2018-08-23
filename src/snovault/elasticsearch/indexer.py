@@ -280,12 +280,24 @@ def index(request):
     return result
 
 
-def dump_output_to_file(file_path, output):
+def dump_output_to_file(file_path, outputs):
     '''For Debug, dump indexer updates objects to file'''
-    print(file_path)
-    print('dump_output_to_file', len(output))
-    with open(file_path, 'w') as file_handler:
-        json.dump(output, file_handler, indent=4, separators=(',', ': '))
+    print('start', file_path)
+    print('dump_output_to_file', len(outputs))
+    out_size = 10
+    path_index = 0
+    while outputs:
+        path_index += 1
+        if len(outputs) >= out_size:
+            out = outputs[:out_size]
+            outputs = outputs[out_size:]
+        else:
+            out = outputs[:]
+            outputs = []
+        file_path = str(path_index) + '-' + file_path
+        print(file_path, len(out))
+        with open(file_path, 'w') as file_handler:
+            json.dump(out, file_handler, indent=4, separators=(',', ': '))
 
 
 def short_indexer(invalidated, max_invalid=None):
