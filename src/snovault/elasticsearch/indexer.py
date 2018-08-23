@@ -252,8 +252,8 @@ def indexer_updater(
         result, xmin, snapshot_id, restart, record, index_str, elastic_search, flush,
     ):  # pylint: disable=too-many-locals, too-many-arguments
     '''Indexing work part'''
-    short_size = 100  # None implies all
-    batch_size = 10  # None implies all
+    short_size = 100000  # None implies all
+    batch_size = 10000  # None implies all
     invalidated = short_indexer(invalidated, max_invalid=short_size)
     len_invalid = len(invalidated)
     if batch_size is None:
@@ -264,9 +264,7 @@ def indexer_updater(
     while invalidated:
         batch_cnt += 1
         batch_invalidated = invalidated[:batch_size]
-        print('s', len(invalidated), len(batch_invalidated))
         invalidated = invalidated[batch_size:]
-        print('f', len(invalidated))
         if stage_for_followup:
             state.prep_for_followup(xmin, batch_invalidated)
         result = state.start_cycle(batch_invalidated, result)
@@ -325,7 +323,11 @@ def dump_output_to_file(file_path, outputs, out_size=100000):
         else:
             out = outputs[:]
             outputs = []
-        next_file_path = '/srv/encoded/develop/snovault/log-test/' + str(path_index) + '-' + file_path
+        next_file_path = '%s/%s-%s' % (
+            '/srv/encoded/develop/snovault/log-test',
+            str(path_index),
+            file_path,
+        )
         print(next_file_path, len(out))
         with open(next_file_path, 'w') as file_handler:
             # json.dump(out, file_handler, indent=4, separators=(',', ': '))
