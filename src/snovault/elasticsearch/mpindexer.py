@@ -108,7 +108,8 @@ def snapshot(xmin, snapshot_id):
 
 def update_object_in_snapshot(args):
     uuid, xmin, snapshot_id, restart = args
-    pid = os.getpid()
+    # pid = os.getpid()
+    pid = None
     with snapshot(xmin, snapshot_id):
         request = get_current_request()
         indexer = request.registry[INDEXER]
@@ -166,7 +167,7 @@ class MPIndexer(Indexer):
             }
         ]
         try:
-            print(outputs)
+            print(outputs, os.getpid())
             for i, output in enumerate(
                     self.pool.imap_unordered(
                         update_object_in_snapshot,
