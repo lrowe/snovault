@@ -272,7 +272,6 @@ def indexer_updater(
         if stage_for_followup:
             state.prep_for_followup(xmin, batch_invalidated)
         result = state.start_cycle(batch_invalidated, result)
-        print('upasdfo asdf')
         outputs, errors = indexer.update_objects(
             request, batch_invalidated, xmin, snapshot_id, restart
         )
@@ -317,8 +316,6 @@ def indexer_updater(
 
 def dump_output_to_file(file_path, outputs, out_size=100000):
     '''For Debug, dump indexer updates objects to file'''
-    # print('start', file_path)
-    # print('dump_output_to_file', len(outputs))
     path_index = 0
     while outputs:
         path_index += 1
@@ -333,7 +330,6 @@ def dump_output_to_file(file_path, outputs, out_size=100000):
             str(path_index),
             file_path,
         )
-        # print(next_file_path, len(out))
         with open(next_file_path, 'w') as file_handler:
             # json.dump(out, file_handler, indent=4, separators=(',', ': '))
             json.dump(out, file_handler)
@@ -388,6 +384,7 @@ class Indexer(object):
             'doc_linked': None,
             'doc_path': None,
             'doc_type': None,
+            'doc_size': None,
             'end_time': None,
             'exception': None,
             'exception_type': None,
@@ -397,6 +394,9 @@ class Indexer(object):
         }
         try:
             doc = request.embed(info_dict['url'], as_user='INDEXER')
+            print(doc)
+            print('doc', type(doc))
+            # info_dict['doc_size'] = sys.getsizeof(json.dumps(doc))
         except Exception as ecp:  # pylint: disable=broad-except
             info_dict['exception_type'] = 'Embed Exception'
             info_dict['exception'] = repr(ecp)
@@ -411,10 +411,8 @@ class Indexer(object):
         return info_dict, doc
 
     def _index_doc(self, doc, uuid, xmin, backoff=None):
-        print(type(doc))
         info_dict = {
             'backoff': backoff,
-            'doc_size': sys.getsizeof(json.dumps(doc)),
             'exception': None,
             'exception_type': None,
             'failed': False,
@@ -478,7 +476,6 @@ class Indexer(object):
             'start_time': time.time(),
             'start_timestamp': datetime.datetime.now().isoformat(),
             'uuid': str(uuid),
-            'xmin': xmin,
         }
         doc, doc_infos, doc_err_msg = self._backoff_get_embed_doc(
             request, uuid
@@ -489,7 +486,6 @@ class Indexer(object):
         elif not doc:
             output['error_message'] = 'Get embed for doc none with no error'
         else:
-            print('_backoff_index_doc')
             es_infos, es_err_msg = self._backoff_index_doc(doc, uuid, xmin)
             output['es_infos'] = es_infos
             if es_err_msg:
@@ -521,7 +517,6 @@ class Indexer(object):
             'end_time': None,
         }
         outputs = []
-        print(uuids)
         for i, uuid in enumerate(uuids):
             output = self.update_object(request, uuid, xmin, restart=restart)
             outputs.append(output)
