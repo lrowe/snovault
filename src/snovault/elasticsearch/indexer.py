@@ -270,6 +270,7 @@ def indexer_updater(
         if stage_for_followup:
             state.prep_for_followup(xmin, batch_invalidated)
         result = state.start_cycle(batch_invalidated, result)
+        print('upasdfo asdf')
         outputs, errors = indexer.update_objects(
             request, batch_invalidated, xmin, snapshot_id, restart
         )
@@ -486,6 +487,7 @@ class Indexer(object):
         elif not doc:
             output['error_message'] = 'Get embed for doc none with no error'
         else:
+            print('_backoff_index_doc')
             es_infos, es_err_msg = self._backoff_index_doc(doc, uuid, xmin)
             output['es_infos'] = es_infos
             if es_err_msg:
