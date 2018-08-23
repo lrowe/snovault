@@ -112,14 +112,14 @@ def update_object_in_snapshot(args):
     with snapshot(xmin, snapshot_id):
         request = get_current_request()
         indexer = request.registry[INDEXER]
-        outputs, errors = indexer.update_object(
+        output = indexer.update_object(
             request,
             uuid,
             xmin,
             restart=restart,
             pid=pid,
         )
-        return outputs, errors
+        return output
 
 
 # Running in main process

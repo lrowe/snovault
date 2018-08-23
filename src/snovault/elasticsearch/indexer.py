@@ -243,9 +243,9 @@ def index(request):
 
         # Do the work...
 
-        output, errors = indexer.update_objects(request, invalidated, xmin, snapshot_id, restart)
+        outputs, errors = indexer.update_objects(request, invalidated, xmin, snapshot_id, restart)
         file_path = '%d-output-%s.json' % (len(invalidated), str(xmin))
-        dump_output_to_file(file_path, output)
+        dump_output_to_file(file_path, outputs)
         result = state.finish_cycle(result,errors)
 
         if errors:
