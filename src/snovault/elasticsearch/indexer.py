@@ -396,6 +396,8 @@ class Indexer(object):
             doc = request.embed(info_dict['url'], as_user='INDEXER')
             print(doc)
             print('doc', type(doc))
+            for key, val in doc.items():
+                print(key, type(val), val)
             # info_dict['doc_size'] = sys.getsizeof(json.dumps(doc))
         except Exception as ecp:  # pylint: disable=broad-except
             info_dict['exception_type'] = 'Embed Exception'
