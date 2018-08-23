@@ -249,7 +249,7 @@ def index(request):
 
 def indexer_updater(
         request, invalidated, stage_for_followup, state, indexer,
-        result, xmin, snapshot_id, restart, record, INDEX, elastic_search, flush,
+        result, xmin, snapshot_id, restart, record, index_str, elastic_search, flush,
     ):  # pylint: disable=too-many-locals, too-many-arguments
     '''Indexing work part'''
     invalidated = short_indexer(invalidated, max_invalid=100)
@@ -262,11 +262,11 @@ def indexer_updater(
         result['errors'] = errors
     if record:
         try:
-            elastic_search.index(index=INDEX, doc_type='meta', body=result, id='indexing')
+            elastic_search.index(index=index_str, doc_type='meta', body=result, id='indexing')
         except:  # pylint: disable=bare-except
             error_messages = copy.deepcopy(result['errors'])
             del result['errors']
-            elastic_search.index(index=INDEX, doc_type='meta', body=result, id='indexing')
+            elastic_search.index(index=index_str, doc_type='meta', body=result, id='indexing')
             for item in error_messages:
                 if 'error_message' in item:
                     log.error(
