@@ -253,8 +253,8 @@ def indexer_updater(
         result, xmin, snapshot_id, restart, record, index_str, elastic_search, flush,
     ):  # pylint: disable=too-many-locals, too-many-arguments
     '''Indexing work part'''
-    start = 200000  # None implies all
-    end = 300000  # None implies all
+    start = 0  # None implies all
+    end = 300  # None implies all
     invalidated = short_indexer(
         invalidated,
         start=start,
@@ -408,6 +408,7 @@ class Indexer(object):
         return info_dict, doc
 
     def _index_doc(self, doc, uuid, xmin, backoff=None):
+        print(type(doc))
         info_dict = {
             'backoff': backoff,
             'doc_size': sys.getsizeof(json.dumps(doc)),
@@ -504,17 +505,18 @@ class Indexer(object):
         '''Run update object on all uuids'''
         self._indexer_log.new_log(len(uuids), xmin, snapshot_id)
         errors = []
-        outputs = [
-            {
-                'chunkiness': None,
-                'uuid': 'info',
-                'processes': None,
-                'snapshot_id': snapshot_id,
-                'uuid_count': len(uuids),
-                'xmin': xmin,
-                'pid': os.getpid(),
-            }
-        ]
+        info_dict = {
+            'chunkiness': None,
+            'uuid': 'info',
+            'processes': None,
+            'snapshot_id': snapshot_id,
+            'uuid_count': len(uuids),
+            'xmin': xmin,
+            'pid': os.getpid(),
+            'start_time': time.time(),
+            'end_time': None,
+        }
+        outputs = []
         for i, uuid in enumerate(uuids):
             output = self.update_object(request, uuid, xmin, restart=restart)
             outputs.append(output)
@@ -526,6 +528,8 @@ class Indexer(object):
                 })
             if (i + 1) % 50 == 0:
                 log.info('Indexing %d', i + 1)
+        info_dict['end_time'] = time.time()
+        outputs.appened(info_dict)
         return outputs, errors
 
     def shutdown(self):

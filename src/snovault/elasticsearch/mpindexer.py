@@ -155,16 +155,19 @@ class MPIndexer(Indexer):
         tasks = [(uuid, xmin, snapshot_id, restart) for uuid in uuids]
         errors = []
         outputs = [
-            {
-                'chunkiness': chunkiness,
-                'uuid': 'mpinfo',
-                'processes': workers,
-                'snapshot_id': snapshot_id,
-                'uuid_count': uuid_count,
-                'xmin': xmin,
-                'pid': os.getpid(),
-            }
         ]
+        info_dict = {
+            'chunkiness': chunkiness,
+            'uuid': 'mpinfo',
+            'processes': workers,
+            'snapshot_id': snapshot_id,
+            'uuid_count': uuid_count,
+            'xmin': xmin,
+            'pid': os.getpid(),
+            'start_time': time.time(),
+            'end_time': None,
+        }
+        outputs = []
         try:
             print(outputs, os.getpid())
             for i, output in enumerate(
@@ -186,6 +189,8 @@ class MPIndexer(Indexer):
         except:
             self.shutdown()
             raise
+        info_dict['end_time'] = time.time()
+        outputs.appened(info_dict)
         return outputs, errors
 
     def shutdown(self):
