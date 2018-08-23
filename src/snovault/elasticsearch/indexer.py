@@ -244,8 +244,6 @@ def index(request):
         # Do the work...
 
         outputs, errors = indexer.update_objects(request, invalidated, xmin, snapshot_id, restart)
-        file_path = '%d-output-%s.json' % (len(invalidated), str(xmin))
-        dump_output_to_file(file_path, outputs)
         result = state.finish_cycle(result,errors)
 
         if errors:
@@ -271,6 +269,8 @@ def index(request):
                 es.indices.flush_synced(index='_all')  # Faster recovery on ES restart
             except ConflictError:
                 pass
+        file_path = '%d-output-%s.json' % (len(invalidated), str(xmin))
+        dump_output_to_file(file_path, outputs)
 
     if first_txn is not None:
         result['txn_lag'] = str(datetime.datetime.now(pytz.utc) - first_txn)
@@ -279,7 +279,7 @@ def index(request):
     return result
 
 
-def dump_output_to_file(output, file_path):
+def dump_output_to_file(file_path, output):
     '''For Debug, dump indexer updates objects to file'''
     print(file_path)
     print('dump_output_to_file', len(output))
