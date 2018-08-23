@@ -1,3 +1,4 @@
+import os
 from elasticsearch.exceptions import (
     ConflictError,
     ConnectionError,
@@ -234,7 +235,7 @@ def index(request):
                     snapshot_id = connection.execute('SELECT pg_export_snapshot();').scalar()
 
     if invalidated and not dry_run:
-        invalidated = short_indexer(invalidated, max_invalid=1)
+        invalidated = short_indexer(invalidated, max_invalid=100)
         if len(stage_for_followup) > 0:
             # Note: undones should be added before, because those uuids will (hopefully) be indexed in this cycle
             state.prep_for_followup(xmin, invalidated)
@@ -407,7 +408,7 @@ class Indexer(object):
                 break
         return es_infos, es_err_msg
 
-    def update_object(self, request, uuid, xmin, restart=False, pid=None):
+    def update_object(self, request, uuid, xmin, restart=False):
         '''Get embed doc to index in elastic search, return run info'''
         request.datastore = 'database'  # required by 2-step indexer
         output = {
@@ -416,7 +417,7 @@ class Indexer(object):
             'end_timestamp': None,
             'error_message': None,
             'es_infos': [],
-            'pid': pid,
+            'pid': os.getpid(),
             'restart': restart,
             'start_time': time.time(),
             'start_timestamp': datetime.datetime.now().isoformat(),
@@ -451,7 +452,17 @@ class Indexer(object):
         '''Run update object on all uuids'''
         self._indexer_log.new_log(len(uuids), xmin, snapshot_id)
         errors = []
-        outputs = []
+        outputs = [
+            {
+                'chunkiness': None,
+                'uuid': 'info',
+                'processes': None,
+                'snapshot_id': snapshot_id,
+                'uuid_count': len(uuids),
+                'xmin': xmin,
+                'pid': os.getpid(),
+            }
+        ]
         for i, uuid in enumerate(uuids):
             output = self.update_object(request, uuid, xmin, restart=restart)
             outputs.append(output)

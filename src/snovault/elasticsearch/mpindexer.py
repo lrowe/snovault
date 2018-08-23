@@ -108,7 +108,6 @@ def snapshot(xmin, snapshot_id):
 
 def update_object_in_snapshot(args):
     uuid, xmin, snapshot_id, restart = args
-    pid = os.getpid()
     with snapshot(xmin, snapshot_id):
         request = get_current_request()
         indexer = request.registry[INDEXER]
@@ -117,7 +116,6 @@ def update_object_in_snapshot(args):
             uuid,
             xmin,
             restart=restart,
-            pid=pid,
         )
         return output
 
@@ -159,10 +157,12 @@ class MPIndexer(Indexer):
         outputs = [
             {
                 'chunkiness': chunkiness,
-                'name': 'mpinfo',
+                'uuid': 'mpinfo',
                 'processes': workers,
+                'snapshot_id': snapshot_id,
                 'uuid_count': uuid_count,
-
+                'xmin': xmin,
+                'pid': os.getpid(),
             }
         ]
         try:
