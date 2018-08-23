@@ -253,8 +253,8 @@ def indexer_updater(
         result, xmin, snapshot_id, restart, record, index_str, elastic_search, flush,
     ):  # pylint: disable=too-many-locals, too-many-arguments
     '''Indexing work part'''
-    short_size = 100000  # None implies all
-    batch_size = 10000  # None implies all
+    short_size = 250000  # None implies all
+    batch_size = 100000  # None implies all
     invalidated = short_indexer(invalidated, max_invalid=short_size)
     len_invalid = len(invalidated)
     if batch_size is None:
