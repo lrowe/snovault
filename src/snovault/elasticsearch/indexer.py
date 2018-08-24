@@ -386,7 +386,7 @@ def _serial_dict(in_dict):
 
 def _get_dict_size(in_dict):
     '''size of serialized dict as string'''
-    return sys.getsizeof(json.loads(_serial_dict(doc)))
+    return sys.getsizeof(json.loads(_serial_dict(in_dict)))
 
 
 
