@@ -386,13 +386,9 @@ def _serial_dict(in_dict):
 
 def _get_dict_size(in_dict):
     '''size of serialized dict as string'''
-    print('_get_dict_size', in_dict)
     in_dict = _serial_dict(in_dict)
-    print('_serial_dict', in_dict)
     dump_str = json.dumps(in_dict)
-    print('json.dumps', dump_str)
     size_dump = sys.getsizeof(dump_str)
-    print('size_dump', size_dump)
     return size_dump
 
 
