@@ -255,7 +255,7 @@ def indexer_updater(
     ):  # pylint: disable=too-many-locals, too-many-arguments
     '''Indexing work part'''
     start = 0
-    end = 100000000
+    end = 100 * 1
     invalidated = short_indexer(
         invalidated,
         start=start,
