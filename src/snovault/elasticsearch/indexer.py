@@ -384,6 +384,10 @@ def _serial_dict(in_dict):
     return in_dict
 
 
+def _get_dict_size(in_dict):
+    '''size of serialized dict as string'''
+    return sys.getsizeof(json.loads(_serial_dict(doc)))
+
 
 
 class Indexer(object):
@@ -411,7 +415,7 @@ class Indexer(object):
         }
         try:
             doc = request.embed(info_dict['url'], as_user='INDEXER')
-            info_dict['doc_size'] = sys.getsizeof(_serial_dict(doc))
+            info_dict['doc_size'] = _get_dict_size(doc)
         except Exception as ecp:  # pylint: disable=broad-except
             info_dict['exception_type'] = 'Embed Exception'
             info_dict['exception'] = repr(ecp)
