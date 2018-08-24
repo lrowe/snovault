@@ -154,8 +154,7 @@ class MPIndexer(Indexer):
 
         tasks = [(uuid, xmin, snapshot_id, restart) for uuid in uuids]
         errors = []
-        outputs = [
-        ]
+        outputs = []
         info_dict = {
             'chunkiness': chunkiness,
             'uuid': 'mpinfo',
@@ -169,7 +168,6 @@ class MPIndexer(Indexer):
         }
         outputs = []
         try:
-            print(outputs, os.getpid())
             for i, output in enumerate(
                     self.pool.imap_unordered(
                         update_object_in_snapshot,
