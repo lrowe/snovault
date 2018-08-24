@@ -371,34 +371,32 @@ def get_current_xmin(request):
     return xmin
 
 
-
-def _serial_dict(in_dict):
-    '''recurize serial dict'''
-    for key, val in in_dict.items():
-        if isinstance(val, dict):
-            in_dict[key] = _serial_dict(val)
-        elif isinstance(val, set):
-            in_dict[key] = list(val)
-        elif isinstance(val, frozenset):
-            in_dict[key] = list(val)
-    return in_dict
-
-
-def _get_dict_size(in_dict):
-    '''size of serialized dict as string'''
-    in_dict = _serial_dict(in_dict)
-    dump_str = json.dumps(in_dict)
-    size_dump = sys.getsizeof(dump_str)
-    return size_dump
-
-
-
 class Indexer(object):
     def __init__(self, registry, do_log=False):
         self.es = registry[ELASTIC_SEARCH]
         self.esstorage = registry[STORAGE]
         self.index = registry.settings['snovault.elasticsearch.index']
         self._indexer_log = IndexLogger(do_log=do_log)
+
+    @classmethod
+    def _serial_dict(cls, in_dict):
+        '''recurize serial dict'''
+        for key, val in in_dict.items():
+            if isinstance(val, dict):
+                in_dict[key] = cls._serial_dict(val)
+            elif isinstance(val, set):
+                in_dict[key] = list(val)
+            elif isinstance(val, frozenset):
+                in_dict[key] = list(val)
+        return in_dict
+
+    @classmethod
+    def _get_dict_size(cls, in_dict):
+        '''size of serialized dict as string'''
+        in_dict = cls._serial_dict(in_dict)
+        dump_str = json.dumps(in_dict)
+        size_dump = sys.getsizeof(dump_str)
+        return size_dump
 
     @staticmethod
     def _get_embed_doc(request, uuid, backoff=None):
@@ -418,7 +416,7 @@ class Indexer(object):
         }
         try:
             doc = request.embed(info_dict['url'], as_user='INDEXER')
-            info_dict['doc_size'] = _get_dict_size(doc)
+            info_dict['doc_size'] = Indexer._get_dict_size(doc)
         except Exception as ecp:  # pylint: disable=broad-except
             info_dict['exception_type'] = 'Embed Exception'
             info_dict['exception'] = repr(ecp)
