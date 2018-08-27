@@ -5,6 +5,7 @@ from elasticsearch.exceptions import (
     TransportError,
 )
 from pyramid.view import view_config
+from pyramid.settings import asbool
 from sqlalchemy.exc import StatementError
 from snovault import (
     COLLECTIONS,
@@ -25,6 +26,7 @@ from .indexer_state import (
     all_types,
     SEARCH_MAX
 )
+from .log_index_data import LogIndexData
 import datetime
 import logging
 import pytz
@@ -299,16 +301,45 @@ def get_current_xmin(request):
     return xmin
 
 class Indexer(object):
+    is_mp_indexer = False
+
     def __init__(self, registry):
         self.es = registry[ELASTIC_SEARCH]
         self.esstorage = registry[STORAGE]
         self.index = registry.settings['snovault.elasticsearch.index']
+        self.index_name = ''
+        if self.is_mp_indexer:
+            self.index_name = 'mp-'
+        if registry.settings.get('indexer'):
+            self.index_name += 'primaryindexer'
+        elif registry.settings.get('visindexer'):
+            self.index_name += 'visindexer'
+        elif registry.settings.get('regionindexer'):
+            self.index_name += 'regionindexer'
+        index_info_keys = {
+            'index_name': self.index_name
+        }
+        index_info = [
+            'elasticsearch.server',
+            'embed_cache.capacity',
+            'indexer.chunk_size',
+            'indexer.processes',
+            'snovault.app_version',
+            'snovault.elasticsearch.index',
+            'snp_search.server',
+            'sqlalchemy.url',
+        ]
+        for key in index_info_keys:
+            index_info[key] = registry.settings.get(key)
+        data_log = asbool(registry.settings.get('indexer.data_log'))
+        self._index_data = LogIndexData(index_info, data_log=data_log)
 
     def _post_index_process(self, outputs):
         '''
         Handles any post processing needed for finished indexing processes
         '''
-        pass
+        print('Indexer', '_post_index_process')
+        self._index_data.handle_outputs(outputs)
 
     def update_objects(self, request, uuids, xmin, snapshot_id=None, restart=False):
         errors = []

@@ -111,6 +111,7 @@ def update_object_in_snapshot(args):
 
 class MPIndexer(Indexer):
     maxtasks = 1  # pooled processes will exit and be replaced after this many tasks are completed.
+    is_mp_indexer = False
 
     def __init__(self, registry, processes=None):
         super(MPIndexer, self).__init__(registry)
