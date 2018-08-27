@@ -316,10 +316,10 @@ class Indexer(object):
             self.index_name += 'visindexer'
         elif registry.settings.get('regionindexer'):
             self.index_name += 'regionindexer'
-        index_info_keys = {
+        index_info = {
             'index_name': self.index_name
         }
-        index_info = [
+        index_info_keys = [
             'elasticsearch.server',
             'embed_cache.capacity',
             'indexer.chunk_size',
