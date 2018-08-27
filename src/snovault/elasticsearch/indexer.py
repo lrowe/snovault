@@ -304,15 +304,25 @@ class Indexer(object):
         self.esstorage = registry[STORAGE]
         self.index = registry.settings['snovault.elasticsearch.index']
 
+    def _post_index_process(self, outputs):
+        '''
+        Handles any post processing needed for finished indexing processes
+        '''
+        pass
+
     def update_objects(self, request, uuids, xmin, snapshot_id=None, restart=False):
         errors = []
+        outputs = []
         for i, uuid in enumerate(uuids):
-            error = self.update_object(request, uuid, xmin)
-            if error is not None:
-                errors.append(error)
+            output = self.update_object(request, uuid, xmin)
+            if output:
+                outputs.append(output)
+                error = output.get('error')
+                if error is not None:
+                    errors.append(error)
             if (i + 1) % 50 == 0:
                 log.info('Indexing %d', i + 1)
-
+        self._post_index_process(outputs)
         return errors
 
     def update_object(self, request, uuid, xmin, restart=False):
@@ -329,7 +339,7 @@ class Indexer(object):
         #     except:
         #         pass
         # OPTIONAL: restart support
-
+        output = {}
         last_exc = None
         try:
             doc = request.embed('/%s/@@index-data/' % uuid, as_user='INDEXER')
@@ -354,7 +364,7 @@ class Indexer(object):
                     raise
                 except ConflictError:
                     log.warning('Conflict indexing %s at version %d', uuid, xmin)
-                    return
+                    return output
                 except (ConnectionError, ReadTimeoutError, TransportError) as e:
                     log.warning('Retryable error indexing %s: %r', uuid, e)
                     last_exc = repr(e)
@@ -364,10 +374,11 @@ class Indexer(object):
                     break
                 else:
                     # Get here on success and outside of try
-                    return
+                    return output
 
         timestamp = datetime.datetime.now().isoformat()
-        return {'error_message': last_exc, 'timestamp': timestamp, 'uuid': str(uuid)}
+        output['error'] = {'error_message': last_exc, 'timestamp': timestamp, 'uuid': str(uuid)}
+        return output
 
     def shutdown(self):
         pass
