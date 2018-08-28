@@ -332,11 +332,8 @@ class Indexer(object):
         ]
         for key in index_info_keys:
             index_info[key] = registry.settings.get(key)
-        data_log = asbool(
-            registry.settings.get('indexer', {}).get(
-                'data_log'
-            )
-        )
+        print(registry.settings.keys())
+        data_log = asbool(registry.settings.get('data_log'))
         print(self.indexer_name, data_log)
         self._index_data = LogIndexData(index_info, data_log=data_log)
 
