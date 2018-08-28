@@ -231,12 +231,12 @@ def index(request):
                     snapshot_id = connection.execute('SELECT pg_export_snapshot();').scalar()
 
     if invalidated and not dry_run:
-        tmp = []
-        for uuid in invalidated:
-            tmp.append(uuid)
-            if len(tmp) > 100:
-                break
-        invalidated = tmp
+        # tmp = []
+        # for uuid in invalidated:
+        #     tmp.append(uuid)
+        #     if len(tmp) > 100:
+        #         break
+        # invalidated = tmp
         if len(stage_for_followup) > 0:
             # Note: undones should be added before, because those uuids will (hopefully) be indexed in this cycle
             state.prep_for_followup(xmin, invalidated)
@@ -338,6 +338,7 @@ class Indexer(object):
                 self.indexer_name == 'mp-primaryindexer'
             ):
             print(registry.settings.get('indexer'))
+            print(registry.settings.get('data_log'))
             print('', registry.settings.keys())
             print('', self.indexer_name, do_log)
             do_log = True
