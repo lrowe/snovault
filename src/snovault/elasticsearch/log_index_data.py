@@ -36,10 +36,10 @@ class LogIndexData(object):
     log_name = 'indexing_time'
     log_path = './'
 
-    def __init__(self, index_info, data_log=False):
+    def __init__(self, index_info, do_log=False):
         self._index_info = index_info
         self._the_log = None
-        self._data_log = data_log
+        self._do_log = do_log
 
     @staticmethod
     def _get_time_str():
@@ -52,7 +52,7 @@ class LogIndexData(object):
             self._the_log.removeHandler(handler)
 
     def _get_log(self):
-        if self._data_log:
+        if self._do_log:
             # Timestamp converted to micro seconds to separate index logs
             file_name = "{}-{}.log".format(
                 self.log_name,
@@ -75,7 +75,7 @@ class LogIndexData(object):
         Close handlers and Get new log
         * Logger gets logs name so we call twice to clear and get a new one
         '''
-        if self._data_log:
+        if self._do_log:
             if self._the_log:
                 self._close_handlers()
             self._the_log = self._get_log()
@@ -129,7 +129,7 @@ class LogIndexData(object):
 
     def handle_outputs(self, outputs, run_info):
         '''Do what settings say to do with outputs'''
-        if self._data_log:
+        if self._do_log:
             print('run_infozz', run_info)
             print('', len(outputs))
             print('', outputs[2])
