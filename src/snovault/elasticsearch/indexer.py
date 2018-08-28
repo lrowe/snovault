@@ -1,3 +1,4 @@
+from os import getpid as os_getpid
 from elasticsearch.exceptions import (
     ConflictError,
     ConnectionError,
@@ -307,7 +308,7 @@ class Indexer(object):
         self.es = registry[ELASTIC_SEARCH]
         self.esstorage = registry[STORAGE]
         self.index = registry.settings['snovault.elasticsearch.index']
-        self.index_name = ''
+        self.indexer_name = ''
         if self.is_mp_indexer:
             self.index_name = 'mp-'
         if registry.settings.get('indexer'):
@@ -317,7 +318,7 @@ class Indexer(object):
         elif registry.settings.get('regionindexer'):
             self.index_name += 'regionindexer'
         index_info = {
-            'index_name': self.index_name
+            'index_name': self.indexer_name
         }
         index_info_keys = [
             'elasticsearch.server',
@@ -334,16 +335,58 @@ class Indexer(object):
         data_log = asbool(registry.settings.get('indexer.data_log'))
         self._index_data = LogIndexData(index_info, data_log=data_log)
 
-    def _post_index_process(self, outputs):
+    @staticmethod
+    def _get_embed_dict(uuid):
+        return {
+            'doc_embedded': None,
+            'doc_linked': None,
+            'doc_path': None,
+            'doc_type': None,
+            'doc_size': None,
+            'end_time': None,
+            'exception': None,
+            'exception_type': None,
+            'failed': False,
+            'start_time': time.time(),
+            'url': "/%s/@@index-data/" % uuid,
+        }
+
+    @staticmethod
+    def _get_es_dict(backoff):
+        return {
+            'backoff': backoff,
+            'exception': None,
+            'exception_type': None,
+            'failed': False,
+            'start_time': time.time(),
+            'end_time': None,
+        }
+
+    def _get_run_info(self, uuid_count, xmin, snapshot_id, restart):
+        return {
+            'end_time': None,
+            'indexer_name': self.indexer_name,
+            'pid': os_getpid(),
+            'restart': restart,
+            'snapshot_id': snapshot_id,
+            'start_time': time.time(),
+            'uuid': 'run_info',
+            'uuid_count': uuid_count,
+            'xmin': xmin,
+        }
+
+    def _post_index_process(self, outputs, run_info):
         '''
         Handles any post processing needed for finished indexing processes
         '''
         print('Indexer', '_post_index_process')
-        self._index_data.handle_outputs(outputs)
+        self._index_data.handle_outputs(outputs, run_info)
 
     def update_objects(self, request, uuids, xmin, snapshot_id=None, restart=False):
+        uuid_count = len(uuids)
         errors = []
         outputs = []
+        run_info = self._get_run_info(uuid_count, xmin, snapshot_id, restart)
         for i, uuid in enumerate(uuids):
             output = self.update_object(request, uuid, xmin)
             if output:
@@ -353,7 +396,7 @@ class Indexer(object):
                     errors.append(error)
             if (i + 1) % 50 == 0:
                 log.info('Indexing %d', i + 1)
-        self._post_index_process(outputs)
+        self._post_index_process(outputs, run_info)
         return errors
 
     def update_object(self, request, uuid, xmin, restart=False):
@@ -370,19 +413,39 @@ class Indexer(object):
         #     except:
         #         pass
         # OPTIONAL: restart support
-        output = {}
+        output = {
+            'end_time': None,
+            'embed_dict': None,
+            'es_dicts': [],
+            'pid': os_getpid(),
+            'restart': restart,
+            'start_time': time.time(),
+            'uuid': uuid,
+            'xmin': xmin,
+        }
+        embed_dict = self._get_embed_dict(uuid)
         last_exc = None
         try:
-            doc = request.embed('/%s/@@index-data/' % uuid, as_user='INDEXER')
+            doc = request.embed(embed_dict['url'], as_user='INDEXER')
         except StatementError:
             # Can't reconnect until invalid transaction is rolled back
             raise
         except Exception as e:
-            log.error('Error rendering /%s/@@index-data', uuid, exc_info=True)
+            log.error('Error rendering %s', embed_dict['url'], exc_info=True)
             last_exc = repr(e)
-
+            embed_dict['exception_type'] = 'Embed Exception'
+            embed_dict['exception'] = last_exc
+        doc_paths = doc.get('paths')
+        if doc_paths:
+            embed_dict['doc_path'] = doc_paths[0]
+        embed_dict['doc_type'] = doc.get('item_type')
+        embed_dict['doc_embedded'] = len(doc.get('embedded_uuids', []))
+        embed_dict['doc_linked'] = len(doc.get('linked_uuids', []))
+        embed_dict['end_time'] = time.time()
+        output['embed_dict'] = embed_dict
         if last_exc is None:
             for backoff in [0, 10, 20, 40, 80]:
+                es_dict = self._get_es_dict(backoff)
                 time.sleep(backoff)
                 try:
                     self.es.index(
@@ -390,25 +453,52 @@ class Indexer(object):
                         id=str(uuid), version=xmin, version_type='external_gte',
                         request_timeout=30,
                     )
-                except StatementError:
+                except StatementError as ecp:
                     # Can't reconnect until invalid transaction is rolled back
+                    es_dict['exception_type'] = 'StatementError Exception'
+                    es_dict['exception'] = repr(ecp)
+                    es_dict['end_time'] = time.time()
+                    output['end_time'] = time.time()
+                    output['es_dicts'].append(es_dict)
                     raise
-                except ConflictError:
+                except ConflictError as ecp:
                     log.warning('Conflict indexing %s at version %d', uuid, xmin)
+                    es_dict['exception_type'] = 'ConflictError Exception'
+                    es_dict['exception'] = repr(ecp)
+                    es_dict['end_time'] = time.time()
+                    es_dict['end_time'] = time.time()
+                    output['end_time'] = time.time()
+                    output['es_dicts'].append(es_dict)
                     return output
                 except (ConnectionError, ReadTimeoutError, TransportError) as e:
                     log.warning('Retryable error indexing %s: %r', uuid, e)
                     last_exc = repr(e)
+                    es_dict['exception_type'] = 'ConnectionError, ReadTimeoutError, TransportError Exception'
+                    es_dict['exception'] = last_exc
+                    output['end_time'] = time.time()
+                    output['es_dicts'].append(es_dict)
                 except Exception as e:
                     log.error('Error indexing %s', uuid, exc_info=True)
                     last_exc = repr(e)
+                    es_dict['exception_type'] = 'Catch All Exception'
+                    es_dict['exception'] = last_exc
+                    es_dict['end_time'] = time.time()
+                    output['end_time'] = time.time()
+                    output['es_dicts'].append(es_dict)
                     break
                 else:
                     # Get here on success and outside of try
+                    es_dict['end_time'] = time.time()
+                    output['end_time'] = time.time()
+                    output['es_dicts'].append(es_dict)
                     return output
 
         timestamp = datetime.datetime.now().isoformat()
-        output['error'] = {'error_message': last_exc, 'timestamp': timestamp, 'uuid': str(uuid)}
+        output['error'] = {
+            'error_message': last_exc,
+            'timestamp': timestamp,
+            'uuid': str(uuid)
+        }
         return output
 
     def shutdown(self):

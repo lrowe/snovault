@@ -1,3 +1,4 @@
+from os import getpid as os_getpid
 from snovault import DBSESSION
 from contextlib import contextmanager
 from multiprocessing import get_context
@@ -119,6 +120,17 @@ class MPIndexer(Indexer):
         self.chunksize = int(registry.settings.get('indexer.chunk_size',1024))  # in production.ini (via buildout.cfg) as 1024
         self.initargs = (registry[APP_FACTORY], registry.settings,)
 
+    # pylint: disable=too-many-arguments
+    def _get_run_info(self, uuid_count, xmin, snapshot_id, restart,
+                      chunkiness, workers):
+        # pylint: disable=missing-super-argument
+        run_info = super()._get_run_info(uuid_count, xmin, snapshot_id, restart)
+        run_info['chunksize'] = self.chunksize
+        run_info['chunkiness'] = chunkiness
+        run_info['processes'] = self.processes
+        run_info['workers'] = workers
+        return run_info
+
     @reify
     def pool(self):
         return Pool(
@@ -142,6 +154,8 @@ class MPIndexer(Indexer):
         tasks = [(uuid, xmin, snapshot_id, restart) for uuid in uuids]
         errors = []
         outputs = []
+        run_info = self._get_run_info(uuid_count, xmin, snapshot_id, restart,
+                                      chunkiness, workers)
         try:
             for i, output in enumerate(self.pool.imap_unordered(
                     update_object_in_snapshot, tasks, chunkiness)):
@@ -152,10 +166,11 @@ class MPIndexer(Indexer):
                         errors.append(error)
                 if (i + 1) % 50 == 0:
                     log.info('Indexing %d', i + 1)
-            self._post_index_process(outputs)
         except:
             self.shutdown()
             raise
+        run_info['end_time'] = time.time()
+        self._post_index_process(outputs, run_info)
         return errors
 
     def shutdown(self):

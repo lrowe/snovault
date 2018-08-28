@@ -104,6 +104,8 @@ class LogIndexData(object):
                 diff = ' %0.6f' % (time.time() - start_time)
             self._the_log.info("%s%s%s", uuid, msg, diff)
 
-    def handle_outputs(self, outputs):
+    def handle_outputs(self, outputs, run_info):
         '''Do what settings say to do with outputs'''
-        print('', outputs)
+        print('run_infozz', run_info)
+        print('', len(outputs))
+        print('', outputs[2])
