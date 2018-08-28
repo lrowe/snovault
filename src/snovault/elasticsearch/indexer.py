@@ -339,6 +339,7 @@ class Indexer(object):
             ):
             print('', registry.settings.keys())
             print('', self.indexer_name, do_log)
+            do_log = True
         self._index_data = LogIndexData(index_info, do_log=do_log)
 
     @staticmethod
