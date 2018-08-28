@@ -333,9 +333,12 @@ class Indexer(object):
         for key in index_info_keys:
             index_info[key] = registry.settings.get(key)
         data_log = asbool(registry.settings.get('data_log'))
-        if self.indexer_name and self.indexer_name is not in ['visindexer', 'regionindexer']:
-            print(registry.settings.keys())
-            print(self.indexer_name, data_log)
+        if (
+                self.indexer_name and
+                self.indexer_name not in ['visindexer', 'regionindexer']
+            ):
+            print('', registry.settings.keys())
+            print('', self.indexer_name, data_log)
         self._index_data = LogIndexData(index_info, data_log=data_log)
 
     @staticmethod
