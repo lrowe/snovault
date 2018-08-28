@@ -6,6 +6,29 @@ Logs indexing data for a batch of uuids
 """
 import logging
 import time
+import json
+
+
+def _dump_output_to_file(base_file_path, outputs, out_size=100000, pretty=False):
+    '''For Debug, dump indexer updates objects to file'''
+    path_index = 0
+    while outputs:
+        path_index += 1
+        if len(outputs) >= out_size:
+            out = outputs[:out_size]
+            outputs = outputs[out_size:]
+        else:
+            out = outputs[:]
+            outputs = []
+        base_file_path = '%s_batch-%s.json' % (
+            base_file_path,
+            str(path_index),
+        )
+        with open(base_file_path, 'w') as file_handler:
+            if pretty:
+                json.dump(out, file_handler, indent=4, separators=(',', ': '))
+            else:
+                json.dump(out, file_handler)
 
 
 class LogIndexData(object):
@@ -110,3 +133,15 @@ class LogIndexData(object):
             print('run_infozz', run_info)
             print('', len(outputs))
             print('', outputs[2])
+            outputs.append(run_info)
+            base_file_path = '%s/%s_uuids-%d' % (
+                '/srv/encoded',
+                self._get_time_str(),
+                run_info['uuid_count'],
+            )
+            _dump_output_to_file(
+                base_file_path,
+                outputs,
+                out_size=100000,
+                pretty=True,
+            )
