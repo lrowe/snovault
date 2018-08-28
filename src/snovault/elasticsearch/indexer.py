@@ -310,13 +310,13 @@ class Indexer(object):
         self.index = registry.settings['snovault.elasticsearch.index']
         self.indexer_name = ''
         if self.is_mp_indexer:
-            self.index_name = 'mp-'
+            self.indexer_name = 'mp-'
         if registry.settings.get('indexer'):
-            self.index_name += 'primaryindexer'
+            self.indexer_name += 'primaryindexer'
         elif registry.settings.get('visindexer'):
-            self.index_name += 'visindexer'
+            self.indexer_name += 'visindexer'
         elif registry.settings.get('regionindexer'):
-            self.index_name += 'regionindexer'
+            self.indexer_name += 'regionindexer'
         index_info = {
             'index_name': self.indexer_name
         }
