@@ -106,6 +106,7 @@ class LogIndexData(object):
 
     def handle_outputs(self, outputs, run_info):
         '''Do what settings say to do with outputs'''
-        print('run_infozz', run_info)
-        print('', len(outputs))
-        print('', outputs[2])
+        if self._data_log:
+            print('run_infozz', run_info)
+            print('', len(outputs))
+            print('', outputs[2])
