@@ -43,7 +43,7 @@ class LogIndexData(object):
 
     @staticmethod
     def _get_time_str():
-        return str(int(time.time() * 10000000)),
+        return str(int(time.time() * 10000000))
 
     def _close_handlers(self):
         '''Close all log handlers'''
@@ -130,12 +130,9 @@ class LogIndexData(object):
     def handle_outputs(self, outputs, run_info):
         '''Do what settings say to do with outputs'''
         if self._do_log:
-            print('run_infozz', run_info)
-            print('', len(outputs))
-            print('', outputs[2])
             outputs.append(run_info)
             base_file_path = '%s/%s_uuids-%d' % (
-                '/srv/encoded',
+                '/srv/encoded/indexer-logs',
                 self._get_time_str(),
                 run_info['uuid_count'],
             )

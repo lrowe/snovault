@@ -337,6 +337,7 @@ class Indexer(object):
                 self.indexer_name and
                 self.indexer_name == 'mp-primaryindexer'
             ):
+            print(registry.settings.get('indexer'))
             print('', registry.settings.keys())
             print('', self.indexer_name, do_log)
             do_log = True
