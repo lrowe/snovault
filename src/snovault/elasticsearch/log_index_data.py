@@ -10,7 +10,7 @@ import json
 
 
 def _dump_output_to_file(base_file_path, outputs, out_size=100000, pretty=False):
-    '''For Debug, dump indexer updates objects to file'''
+    '''Dump indexer outputs to json in batches'''
     path_index = 0
     while outputs:
         path_index += 1
@@ -20,7 +20,7 @@ def _dump_output_to_file(base_file_path, outputs, out_size=100000, pretty=False)
         else:
             out = outputs[:]
             outputs = []
-        base_file_path = '%s_batch-%s.json' % (
+        file_path = '%s_batch-%s.json' % (
             base_file_path,
             str(path_index),
         )
