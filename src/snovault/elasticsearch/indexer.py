@@ -342,7 +342,7 @@ class Indexer(object):
         sub_output_dict = self.indexer_data_dump.get_embed_dict(uuid)
         doc = None
         try:
-            doc = request.embed(sub_output_dict['doc_url'], as_user='INDEXER')
+            doc = request.embed(sub_output_dict['url'], as_user='INDEXER')
             doc_paths = doc.get('paths')
             if doc_paths:
                 sub_output_dict['doc_path'] = doc_paths[0]
@@ -358,7 +358,7 @@ class Indexer(object):
         except Exception as ecp:  # pylint: disable=broad-except
             log.error(
                 'Error rendering %s',
-                sub_output_dict['doc_url'],
+                sub_output_dict['url'],
                 exc_info=True
             )
             sub_output_dict['exception_type'] = 'Exception'
