@@ -323,49 +323,67 @@ class Indexer(object):
 
         return errors
 
+    @staticmethod
+    def _request_embed(request, uuid):
+        doc = None
+        doc_url = '/{uuid}@@index-data/'.format(uuid=uuid)
+        last_exc = None
+        try:
+            doc = request.embed(doc_url, as_user='INDEXER')
+        except StatementError:
+            # Can't reconnect until invalid transaction is rolled back
+            raise
+        except Exception as ecp:  # pylint: disable=broad-except
+            log.error('Error rendering %s', doc_url, exc_info=True)
+            last_exc = repr(ecp)
+        return doc, last_exc
+
+    def _index(self, doc, uuid, xmin):
+        last_exc = None
+        for backoff in [0, 10, 20, 40, 80]:
+            time.sleep(backoff)
+            try:
+                self.es_wrapper.index(
+                    index=doc['item_type'], doc_type=doc['item_type'], body=doc,
+                    id=str(uuid), version=xmin, version_type='external_gte',
+                    request_timeout=30,
+                )
+            except StatementError:
+                # Can't reconnect until invalid transaction is rolled back
+                raise
+            except ConflictError:
+                log.warning('Conflict indexing %s at version %d', uuid, xmin)
+                break
+            except (ConnectionError, ReadTimeoutError, TransportError) as ecp:
+                log.warning('Retryable error indexing %s: %r', uuid, ecp)
+                last_exc = repr(ecp)
+            except Exception as ecp:  # pylint: disable=broad-except
+                log.error('Error indexing %s', uuid, exc_info=True)
+                last_exc = repr(ecp)
+                break
+            else:
+                # Get here on success and outside of try
+                last_exc = None
+        return last_exc
+
     def update_object(self, request, uuid, xmin):
         '''
         Handles indexing for one uuid
         * doc embedding and doc indexing
         '''
+        error = None
         request.datastore = 'database'  # required by 2-step indexer
-        last_exc = None
-        try:
-            doc = request.embed('/%s/@@index-data/' % uuid, as_user='INDEXER')
-        except StatementError:
-            # Can't reconnect until invalid transaction is rolled back
-            raise
-        except Exception as ecp:  # pylint: disable=broad-except
-            log.error('Error rendering /%s/@@index-data', uuid, exc_info=True)
-            last_exc = repr(ecp)
-
-        if last_exc is None:
-            for backoff in [0, 10, 20, 40, 80]:
-                time.sleep(backoff)
-                try:
-                    self.es_wrapper.index(
-                        index=doc['item_type'], doc_type=doc['item_type'], body=doc,
-                        id=str(uuid), version=xmin, version_type='external_gte',
-                        request_timeout=30,
-                    )
-                except StatementError:
-                    # Can't reconnect until invalid transaction is rolled back
-                    raise
-                except ConflictError:
-                    log.warning('Conflict indexing %s at version %d', uuid, xmin)
-                    return None
-                except (ConnectionError, ReadTimeoutError, TransportError) as ecp:
-                    log.warning('Retryable error indexing %s: %r', uuid, ecp)
-                    last_exc = repr(ecp)
-                except Exception as ecp:  # pylint: disable=broad-except
-                    log.error('Error indexing %s', uuid, exc_info=True)
-                    last_exc = repr(ecp)
-                    break
-                else:
-                    # Get here on success and outside of try
-                    return None
-        timestamp = datetime.datetime.now().isoformat()
-        return {'error_message': last_exc, 'timestamp': timestamp, 'uuid': str(uuid)}
+        doc, last_exc = self._request_embed(request, uuid)
+        if doc and not last_exc:
+            last_exc = self._index(doc, uuid, xmin)
+        if last_exc:
+            timestamp = datetime.datetime.now().isoformat()
+            error = {
+                'error_message': last_exc,
+                'timestamp': timestamp,
+                'uuid': str(uuid),
+            }
+        return error
 
     def shutdown(self):
         '''? Not Implemented'''
