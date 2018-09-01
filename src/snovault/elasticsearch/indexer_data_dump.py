@@ -1,0 +1,144 @@
+"""
+Optionally writes indexing data to file
+* Collects data but only writes if do_log is set
+* Writes the dicts sent in to timestamped files
+"""
+import time
+import json
+
+
+def _dump_output_to_file(
+        base_file_path,
+        outputs,
+        out_size=100000,
+        pretty=False
+    ):
+    '''Dump indexer outputs to json in batches'''
+    path_index = 0
+    while outputs:
+        path_index += 1
+        if len(outputs) >= out_size:
+            out = outputs[:out_size]
+            outputs = outputs[out_size:]
+        else:
+            out = outputs[:]
+            outputs = []
+        file_path = '%s_batch-%s.json' % (
+            base_file_path,
+            str(path_index),
+        )
+        with open(file_path, 'w') as file_handler:
+            args = {}
+            if pretty:
+                args = {'indent': 4, 'separators': (',', ': ')}
+            json.dump(out, file_handler, **args)
+
+
+class IndexDataDump(object):
+    '''Wraps the logging module for output indexing process'''
+    def __init__(self, indexer_name, registry, do_log=False):
+        self._do_log = do_log
+        self._index_info = self._get_indexer_info(indexer_name, registry)
+
+    @staticmethod
+    def _get_time_str():
+        return str(int(time.time() * 10000000))
+
+    @staticmethod
+    def _get_indexer_info(indexer_name, registry):
+        '''
+        Builds generic indexer info from registry config
+        * Added to the output file as a dict with uuid='indexer_info'
+        * Similar to run_info function below
+        '''
+        index_info = {
+            'index_name': indexer_name
+        }
+        index_info_keys = [
+            'elasticsearch.server',
+            'embed_cache.capacity',
+            'indexer.chunk_size',
+            'indexer.processes',
+            'snovault.app_version',
+            'snovault.elasticsearch.index',
+            'snp_search.server',
+            'sqlalchemy.url',
+        ]
+        for key in index_info_keys:
+            index_info[key] = registry.settings.get(key)
+        return index_info
+
+    @staticmethod
+    def get_embed_dict(uuid):
+        '''Sub output dict for embed request per uuid'''
+        return {
+            'doc_embedded': None,
+            'doc_linked': None,
+            'doc_path': None,
+            'doc_type': None,
+            'doc_size': None,
+            'end_time': None,
+            'exception': None,
+            'exception_type': None,
+            'failed': False,
+            'start_time': time.time(),
+            'url': "/%s/@@index-data/" % uuid,
+        }
+
+    @staticmethod
+    def get_es_dict(backoff):
+        '''
+        Sub output dict for es indexing per uuid
+        * es indexing per uuid can retry so es dicts will be a list
+        ordered with the backoff term from update objects in indexer.
+        '''
+        return {
+            'backoff': backoff,
+            'exception': None,
+            'exception_type': None,
+            'failed': False,
+            'start_time': time.time(),
+            'end_time': None,
+        }
+
+    @staticmethod
+    def get_output_dict(pid, uuid, xmin):
+        '''Output dict per uuid, contains, es_dicts and embed_dict'''
+        return {
+            'end_time': None,
+            'embed_dict': None,
+            'es_dicts': [],
+            'pid': pid,
+            'start_time': time.time(),
+            'uuid': uuid,
+            'xmin': xmin,
+        }
+
+    @staticmethod
+    def get_run_info(pid, uuid_count, xmin, snapshot_id):
+        '''Similar to indexer_info.  Added to output with uuid='run_info'''
+        return {
+            'end_time': None,
+            'pid': pid,
+            'snapshot_id': snapshot_id,
+            'start_time': time.time(),
+            'uuid': 'run_info',
+            'uuid_count': uuid_count,
+            'xmin': xmin,
+        }
+
+    def handle_outputs(self, outputs, run_info):
+        '''Do what settings say to do with outputs'''
+        if self._do_log:
+            outputs.append(run_info)
+            base_file_path = '%s/%s_uuids-%d' % (
+                '/srv/encoded/',
+                self._get_time_str(),
+                run_info['uuid_count'],
+            )
+            _dump_output_to_file(
+                base_file_path,
+                outputs,
+                out_size=100000,
+                pretty=True,
+            )

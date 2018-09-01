@@ -1,3 +1,4 @@
+from os import getpid as os_getpid
 from elasticsearch.exceptions import (
     ConflictError,
     ConnectionError,
@@ -32,6 +33,7 @@ import time
 import copy
 import json
 import requests
+from .indexer_data_dump import IndexDataDump
 
 es_logger = logging.getLogger("elasticsearch")
 es_logger.setLevel(logging.ERROR)
@@ -294,12 +296,39 @@ def get_current_xmin(request):
 
 class Indexer(object):
     '''Standard Indexer and Base class for all indexers'''
+    is_mp_indexer = False
     def __init__(self, registry):
         self.es_wrapper = registry[ELASTIC_SEARCH]
         self.esstorage = registry[STORAGE]
         self.index = registry.settings['snovault.elasticsearch.index']
         self._snapshot_id = None
         self._force = None
+        self.indexer_name = self._get_name(registry)
+        do_log = False
+        if self.indexer_name in ['primaryindexer', 'mpprimaryindexer']:
+            do_log = True
+        self.indexer_data_dump = IndexDataDump(
+            self.indexer_name,
+            registry,
+            do_log=do_log
+        )
+
+    def _get_name(self, registry):
+        '''
+        Sets the name of the indexer type
+        * Ideally this would be a property of the subclasses
+        because the parent class should not depend on childern.
+        '''
+        indexer_name = ''
+        if self.is_mp_indexer:
+            indexer_name = 'mp-'
+        if registry.settings.get('indexer'):
+            indexer_name += 'primaryindexer'
+        elif registry.settings.get('visindexer'):
+            indexer_name += 'visindexer'
+        elif registry.settings.get('regionindexer'):
+            indexer_name += 'regionindexer'
+        return indexer_name
 
     def set_force(self, value):
         '''Set force, not used for all indexers'''
@@ -309,38 +338,39 @@ class Indexer(object):
         '''Set snapshot_id, not used for all indexers'''
         self._snapshot_id = value
 
-    def update_objects(self, request, uuids, xmin):
-        '''
-        Standard Indexer loop to run update object on iterable of uuids
-        '''
-        errors = []
-        for i, uuid in enumerate(uuids):
-            error = self.update_object(request, uuid, xmin)
-            if error is not None:
-                errors.append(error)
-            if (i + 1) % 50 == 0:
-                log.info('Indexing %d', i + 1)
-
-        return errors
-
-    @staticmethod
-    def _request_embed(request, uuid):
+    def _request_embed(self, request, uuid):
+        sub_output_dict = self.indexer_data_dump.get_embed_dict(uuid)
         doc = None
-        doc_url = '/{uuid}@@index-data/'.format(uuid=uuid)
-        last_exc = None
         try:
-            doc = request.embed(doc_url, as_user='INDEXER')
-        except StatementError:
+            doc = request.embed(sub_output_dict['doc_url'], as_user='INDEXER')
+            doc_paths = doc.get('paths')
+            if doc_paths:
+                sub_output_dict['doc_path'] = doc_paths[0]
+            sub_output_dict['doc_type'] = doc.get('item_type')
+            sub_output_dict['doc_embedded'] = len(doc.get('embedded_uuids', []))
+            sub_output_dict['doc_linked'] = len(doc.get('linked_uuids', []))
+            sub_output_dict['end_time'] = time.time()
+        except StatementError as ecp:
             # Can't reconnect until invalid transaction is rolled back
+            sub_output_dict['exception_type'] = 'StatementError Exception'
+            sub_output_dict['exception'] = repr(ecp)
             raise
         except Exception as ecp:  # pylint: disable=broad-except
-            log.error('Error rendering %s', doc_url, exc_info=True)
-            last_exc = repr(ecp)
-        return doc, last_exc
+            log.error(
+                'Error rendering %s',
+                sub_output_dict['doc_url'],
+                exc_info=True
+            )
+            sub_output_dict['exception_type'] = 'Exception'
+            sub_output_dict['exception'] = repr(ecp)
+        return doc, sub_output_dict
 
     def _index(self, doc, uuid, xmin):
         last_exc = None
+        sub_output_dicts = []
+        do_break = False
         for backoff in [0, 10, 20, 40, 80]:
+            sub_output_dict = self.indexer_data_dump.get_es_dict(backoff)
             time.sleep(backoff)
             try:
                 self.es_wrapper.index(
@@ -348,34 +378,94 @@ class Indexer(object):
                     id=str(uuid), version=xmin, version_type='external_gte',
                     request_timeout=30,
                 )
-            except StatementError:
+            except StatementError as ecp:
                 # Can't reconnect until invalid transaction is rolled back
+                sub_output_dict['exception_type'] = 'StatementError Exception'
+                sub_output_dict['exception'] = repr(ecp)
                 raise
-            except ConflictError:
+            except ConflictError as ecp:
                 log.warning('Conflict indexing %s at version %d', uuid, xmin)
-                break
-            except (ConnectionError, ReadTimeoutError, TransportError) as ecp:
+                sub_output_dict['exception_type'] = 'ConflictError Exception'
+                sub_output_dict['exception'] = repr(ecp)
+                do_break = True
+            except ConnectionError as ecp:
                 log.warning('Retryable error indexing %s: %r', uuid, ecp)
                 last_exc = repr(ecp)
+                sub_output_dict['exception_type'] = 'ConnectionError Exception'
+                sub_output_dict['exception'] = last_exc
+            except ReadTimeoutError as ecp:
+                log.warning('Retryable error indexing %s: %r', uuid, ecp)
+                last_exc = repr(ecp)
+                sub_output_dict['exception_type'] = 'ReadTimeoutError Exception'
+                sub_output_dict['exception'] = last_exc
+            except TransportError as ecp:
+                log.warning('Retryable error indexing %s: %r', uuid, ecp)
+                last_exc = repr(ecp)
+                sub_output_dict['exception_type'] = 'TransportError Exception'
+                sub_output_dict['exception'] = last_exc
             except Exception as ecp:  # pylint: disable=broad-except
                 log.error('Error indexing %s', uuid, exc_info=True)
                 last_exc = repr(ecp)
-                break
+                sub_output_dict['exception_type'] = 'Exception'
+                sub_output_dict['exception'] = last_exc
+                do_break = True
             else:
                 # Get here on success and outside of try
-                last_exc = None
-        return last_exc
+                do_break = True
+            sub_output_dict['end_time'] = time.time()
+            if do_break:
+                break
+        return sub_output_dicts, last_exc
+
+    def _post_index_process(self, outputs, run_info):
+        '''
+        Handles any post processing needed for finished indexing processes
+        '''
+        self.indexer_data_dump.handle_outputs(outputs, run_info)
+
+    def update_objects(self, request, uuids, xmin):
+        '''
+        Standard Indexer loop to run update object on iterable of uuids
+        '''
+        uuid_count = len(uuids)
+        outputs = []
+        errors = []
+        run_info = self.indexer_data_dump.get_run_info(
+            os_getpid(),
+            uuid_count,
+            xmin,
+            self._snapshot_id,
+        )
+        for i, uuid in enumerate(uuids):
+            output = self.update_object(request, uuid, xmin)
+            if output:
+                outputs.append(output)
+                error = output.get('error')
+                if error is not None:
+                    errors.append(error)
+            if (i + 1) % 50 == 0:
+                log.info('Indexing %d', i + 1)
+        run_info['end_time'] = time.time()
+        self._post_index_process(outputs, run_info)
+        return errors
 
     def update_object(self, request, uuid, xmin):
         '''
         Handles indexing for one uuid
         * doc embedding and doc indexing
         '''
+        pid = os_getpid()
+        output = self.indexer_data_dump.get_output_dict(pid, uuid, xmin)
         error = None
         request.datastore = 'database'  # required by 2-step indexer
-        doc, last_exc = self._request_embed(request, uuid)
-        if doc and not last_exc:
-            last_exc = self._index(doc, uuid, xmin)
+        doc, embed_dict = self._request_embed(request, uuid)
+        output['embed_dict'] = embed_dict
+        last_exc = None
+        if doc and not embed_dict['exception']:
+            es_dicts, last_exc = self._index(doc, uuid, xmin)
+            output['es_dicts'] = es_dicts
+        else:
+            last_exc = embed_dict['exception']
         if last_exc:
             timestamp = datetime.datetime.now().isoformat()
             error = {
@@ -383,7 +473,9 @@ class Indexer(object):
                 'timestamp': timestamp,
                 'uuid': str(uuid),
             }
-        return error
+        output['error'] = error
+        output['end_time'] = time.time()
+        return output
 
     def shutdown(self):
         '''? Not Implemented'''

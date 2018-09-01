@@ -1,3 +1,4 @@
+from os import getpid as os_getpid
 from snovault import DBSESSION
 from contextlib import contextmanager
 from multiprocessing import get_context
@@ -112,6 +113,7 @@ class MPIndexer(Indexer):
     # pooled processes will exit and be replaced after
     # this many tasks are completed.
     maxtasks = 1
+    is_mp_indexer = True
     def __init__(self, registry, processes=None):
         super(MPIndexer, self).__init__(registry)
         self.processes = processes
@@ -141,16 +143,32 @@ class MPIndexer(Indexer):
             chunkiness = self.chunksize
         tasks = [(uuid, xmin, self._snapshot_id) for uuid in uuids]
         errors = []
+        outputs = []
+        run_info = self.indexer_data_dump.get_run_info(
+            os_getpid(),
+            uuid_count,
+            xmin,
+            self._snapshot_id,
+        )
+        run_info['chunksize'] = self.chunksize
+        run_info['chunkiness'] = chunkiness
+        run_info['processes'] = self.processes
+        run_info['workers'] = workers
         try:
-            for i, error in enumerate(self.pool.imap_unordered(
+            for i, output in enumerate(self.pool.imap_unordered(
                     update_object_in_snapshot, tasks, chunkiness)):
-                if error is not None:
-                    errors.append(error)
+                if output:
+                    outputs.append(output)
+                    error = output.get('error')
+                    if error is not None:
+                        errors.append(error)
                 if (i + 1) % 50 == 0:
                     log.info('Indexing %d', i + 1)
         except:
             self.shutdown()
             raise
+        run_info['end_time'] = time.time()
+        self._post_index_process(outputs, run_info)
         return errors
 
     def shutdown(self):
