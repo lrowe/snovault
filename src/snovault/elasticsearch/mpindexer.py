@@ -100,26 +100,28 @@ def snapshot(xmin, snapshot_id):
 
 
 def update_object_in_snapshot(args):
-    uuid, xmin, snapshot_id, restart = args
+    uuid, xmin, snapshot_id = args
     with snapshot(xmin, snapshot_id):
         request = get_current_request()
         indexer = request.registry[INDEXER]
-        return indexer.update_object(request, uuid, xmin, restart)
+        return indexer.update_object(request, uuid, xmin)
 
-
-# Running in main process
 
 class MPIndexer(Indexer):
-    maxtasks = 1  # pooled processes will exit and be replaced after this many tasks are completed.
-
+    '''Multiprocess Indexer'''
+    # pooled processes will exit and be replaced after
+    # this many tasks are completed.
+    maxtasks = 1
     def __init__(self, registry, processes=None):
         super(MPIndexer, self).__init__(registry)
         self.processes = processes
-        self.chunksize = int(registry.settings.get('indexer.chunk_size',1024))  # in production.ini (via buildout.cfg) as 1024
+        self.chunksize = int(registry.settings.get('indexer.chunk_size', 1024))
         self.initargs = (registry[APP_FACTORY], registry.settings,)
 
     @reify
     def pool(self):
+        '''Cached pool instance'''
+        # pylint: disable=unexpected-keyword-arg
         return Pool(
             processes=self.processes,
             initializer=initializer,
@@ -128,7 +130,7 @@ class MPIndexer(Indexer):
             context=get_context('forkserver'),
         )
 
-    def update_objects(self, request, uuids, xmin, snapshot_id, restart):
+    def update_objects(self, request, uuids, xmin):
         # Ensure that we iterate over uuids in this thread not the pool task handler.
         uuid_count = len(uuids)
         workers = 1
@@ -137,8 +139,7 @@ class MPIndexer(Indexer):
         chunkiness = int((uuid_count - 1) / workers) + 1
         if chunkiness > self.chunksize:
             chunkiness = self.chunksize
-
-        tasks = [(uuid, xmin, snapshot_id, restart) for uuid in uuids]
+        tasks = [(uuid, xmin, self._snapshot_id) for uuid in uuids]
         errors = []
         try:
             for i, error in enumerate(self.pool.imap_unordered(

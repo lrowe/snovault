@@ -235,8 +235,8 @@ def index(request):
         result = state.start_cycle(invalidated, result)
 
         # Do the work...
-
-        errors = indexer.update_objects(request, invalidated, xmin, snapshot_id, restart)
+        indexer.set_snapshot_id(snapshot_id)
+        errors = indexer.update_objects(request, invalidated, xmin)
 
         result = state.finish_cycle(result,errors)
 
@@ -293,12 +293,26 @@ def get_current_xmin(request):
     return xmin
 
 class Indexer(object):
+    '''Standard Indexer and Base class for all indexers'''
     def __init__(self, registry):
-        self.es = registry[ELASTIC_SEARCH]
+        self.es_wrapper = registry[ELASTIC_SEARCH]
         self.esstorage = registry[STORAGE]
         self.index = registry.settings['snovault.elasticsearch.index']
+        self._snapshot_id = None
+        self._force = None
 
-    def update_objects(self, request, uuids, xmin, snapshot_id=None, restart=False):
+    def set_force(self, value):
+        '''Set force, not used for all indexers'''
+        self._force = value
+
+    def set_snapshot_id(self, value):
+        '''Set snapshot_id, not used for all indexers'''
+        self._snapshot_id = value
+
+    def update_objects(self, request, uuids, xmin):
+        '''
+        Standard Indexer loop to run update object on iterable of uuids
+        '''
         errors = []
         for i, uuid in enumerate(uuids):
             error = self.update_object(request, uuid, xmin)
@@ -309,36 +323,27 @@ class Indexer(object):
 
         return errors
 
-    def update_object(self, request, uuid, xmin, restart=False):
+    def update_object(self, request, uuid, xmin):
+        '''
+        Handles indexing for one uuid
+        * doc embedding and doc indexing
+        '''
         request.datastore = 'database'  # required by 2-step indexer
-
-        # OPTIONAL: restart support
-        # If a restart occurred in the middle of indexing, this uuid might have already been indexd, so skip redoing it.
-        # if restart:
-        #     try:
-        #         #if self.es.exists(index=self.index, id=str(uuid), version=xmin, version_type='external_gte'):  # couldn't get exists to work.
-        #         result = self.es.get(index=self.index, id=str(uuid), _source_include='uuid', version=xmin, version_type='external_gte')
-        #         if result.get('_source') is not None:
-        #             return
-        #     except:
-        #         pass
-        # OPTIONAL: restart support
-
         last_exc = None
         try:
             doc = request.embed('/%s/@@index-data/' % uuid, as_user='INDEXER')
         except StatementError:
             # Can't reconnect until invalid transaction is rolled back
             raise
-        except Exception as e:
+        except Exception as ecp:  # pylint: disable=broad-except
             log.error('Error rendering /%s/@@index-data', uuid, exc_info=True)
-            last_exc = repr(e)
+            last_exc = repr(ecp)
 
         if last_exc is None:
             for backoff in [0, 10, 20, 40, 80]:
                 time.sleep(backoff)
                 try:
-                    self.es.index(
+                    self.es_wrapper.index(
                         index=doc['item_type'], doc_type=doc['item_type'], body=doc,
                         id=str(uuid), version=xmin, version_type='external_gte',
                         request_timeout=30,
@@ -348,20 +353,20 @@ class Indexer(object):
                     raise
                 except ConflictError:
                     log.warning('Conflict indexing %s at version %d', uuid, xmin)
-                    return
-                except (ConnectionError, ReadTimeoutError, TransportError) as e:
-                    log.warning('Retryable error indexing %s: %r', uuid, e)
-                    last_exc = repr(e)
-                except Exception as e:
+                    return None
+                except (ConnectionError, ReadTimeoutError, TransportError) as ecp:
+                    log.warning('Retryable error indexing %s: %r', uuid, ecp)
+                    last_exc = repr(ecp)
+                except Exception as ecp:  # pylint: disable=broad-except
                     log.error('Error indexing %s', uuid, exc_info=True)
-                    last_exc = repr(e)
+                    last_exc = repr(ecp)
                     break
                 else:
                     # Get here on success and outside of try
-                    return
-
+                    return None
         timestamp = datetime.datetime.now().isoformat()
         return {'error_message': last_exc, 'timestamp': timestamp, 'uuid': str(uuid)}
 
     def shutdown(self):
+        '''? Not Implemented'''
         pass
