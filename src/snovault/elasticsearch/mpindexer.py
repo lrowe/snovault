@@ -141,6 +141,9 @@ class MPIndexer(Indexer):
         chunkiness = int((uuid_count - 1) / workers) + 1
         if chunkiness > self.chunksize:
             chunkiness = self.chunksize
+        # TODO: REMOVE SHORT HERE
+        uuids = self.indexer_data_dump.debug_short_indexer(uuids, 1000)
+        # TODO: REMOVE SHORT HERE
         tasks = [(uuid, xmin, self._snapshot_id) for uuid in uuids]
         errors = []
         outputs = []

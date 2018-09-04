@@ -101,6 +101,20 @@ class IndexDataDump(object):
         return str(int(time.time() * 10000000))
 
     @staticmethod
+    def debug_short_indexer(uuids, uuids_size, start=0, end=-1):
+        '''
+        Cuts the indexer uuids size for debugging
+        * Typically called right before looping over the uuids
+        '''
+        return_uuids = []
+        cnt = 0
+        for uuid in uuids[start:end]:
+            cnt += 1
+            if cnt < uuids_size:
+                return_uuids.append(uuid)
+        return return_uuids
+
+    @staticmethod
     def get_embed_dict(uuid):
         '''Sub output dict for embed request per uuid'''
         return {
