@@ -139,6 +139,7 @@ def index(request):
     state = IndexerState(es, INDEX, followups=stage_for_followup)
 
     (xmin, invalidated, restart) = state.priority_cycle(request)
+
     # OPTIONAL: restart support
     if restart:  # Currently not bothering with restart!!!
         xmin = -1
@@ -238,7 +239,12 @@ def index(request):
 
         # Do the work...
         indexer.set_snapshot_id(snapshot_id)
-        errors = indexer.update_objects(request, invalidated, xmin)
+        errors = indexer.update_objects(
+            request,
+            invalidated,
+            xmin,
+            is_reindex=is_reindex,
+        )
 
         result = state.finish_cycle(result,errors)
 
@@ -421,20 +427,27 @@ class Indexer(object):
         '''
         Handles any post processing needed for finished indexing processes
         '''
-        self.indexer_data_dump.handle_outputs(outputs, run_info)
+        dump_path = self.indexer_data_dump.handle_outputs(outputs, run_info)
+        # Change to info or warn after deugging
+        log.error('Indexing data dump directory %s.', dump_path)
 
-    def update_objects(self, request, uuids, xmin):
+    def update_objects(self, request, uuids, xmin, is_reindex=False):
         '''
         Standard Indexer loop to run update object on iterable of uuids
         '''
         uuid_count = len(uuids)
         outputs = []
         errors = []
+        overrides = {
+            '_dump_size': 50000,
+            '_is_reindex': is_reindex,
+        }
         run_info = self.indexer_data_dump.get_run_info(
             os_getpid(),
             uuid_count,
             xmin,
             self._snapshot_id,
+            **overrides
         )
         for i, uuid in enumerate(uuids):
             output = self.update_object(request, uuid, xmin)

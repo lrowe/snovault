@@ -6,6 +6,17 @@ Optionally writes indexing data to file
 import time
 import json
 
+from os.path import (
+    isdir as os_isdir,
+    expanduser as os_expanduser,
+)
+
+
+ENCODED_HOME = os_expanduser("~")
+INDEXING_LOGS_DIR= ENCODED_HOME + '/.indexing-logs'
+INITIAL_WRITE_DIR = INDEXING_LOGS_DIR + '/initial'
+REINDEX_WRITE_DIR = INDEXING_LOGS_DIR + '/reindexes'
+
 
 def _dump_output_to_file(
         base_file_path,
@@ -40,9 +51,26 @@ class IndexDataDump(object):
         self._do_log = do_log
         self._index_info = self._get_indexer_info(indexer_name, registry)
 
-    @staticmethod
-    def _get_time_str():
-        return str(int(time.time() * 10000000))
+    def _dump_intial_index(self):
+        '''
+        Returns dump directory if we should dump
+        the initial indexing data
+        * To dump more indexing data use _dump_reindex if possible
+        or move the INITIAL_WRITE_DIR data folder manually.
+        '''
+        if self._do_log and not os_isdir(INITIAL_WRITE_DIR):
+            return INITIAL_WRITE_DIR
+        return None
+
+    def _dump_reindex(self, is_reindex):
+        '''
+        Returns dump directory if we should dump
+        the reindexing data
+        '''
+        if (self._do_log and is_reindex and
+                os_isdir(REINDEX_WRITE_DIR)):
+            return REINDEX_WRITE_DIR
+        return None
 
     @staticmethod
     def _get_indexer_info(indexer_name, registry):
@@ -67,6 +95,10 @@ class IndexDataDump(object):
         for key in index_info_keys:
             index_info[key] = registry.settings.get(key)
         return index_info
+
+    @staticmethod
+    def _get_time_str():
+        return str(int(time.time() * 10000000))
 
     @staticmethod
     def get_embed_dict(uuid):
@@ -115,9 +147,11 @@ class IndexDataDump(object):
         }
 
     @staticmethod
-    def get_run_info(pid, uuid_count, xmin, snapshot_id):
+    def get_run_info(pid, uuid_count, xmin, snapshot_id, **overrides):
         '''Similar to indexer_info.  Added to output with uuid='run_info'''
-        return {
+        run_info = {
+            '_dump_size': 100000,
+            '_is_reindex': False,
             'end_time': None,
             'pid': pid,
             'snapshot_id': snapshot_id,
@@ -126,19 +160,29 @@ class IndexDataDump(object):
             'uuid_count': uuid_count,
             'xmin': xmin,
         }
+        return run_info.update(overrides)
 
     def handle_outputs(self, outputs, run_info):
         '''Do what settings say to do with outputs'''
-        if self._do_log:
-            outputs.append(run_info)
-            base_file_path = '%s/%s_uuids-%d' % (
-                '/srv/encoded/',
+        dump_path = None
+        if self._dump_intial_index():
+            dump_path = '%s/%s/uuids-%d' % (
+                INITIAL_WRITE_DIR,
                 self._get_time_str(),
                 run_info['uuid_count'],
             )
+        elif self._dump_reindex(run_info['is_reindex']):
+            dump_path = '%s/%s/uuids-%d' % (
+                REINDEX_WRITE_DIR,
+                self._get_time_str(),
+                run_info['uuid_count'],
+            )
+        if dump_path:
+            outputs.append(run_info)
             _dump_output_to_file(
-                base_file_path,
+                dump_path,
                 outputs,
-                out_size=100000,
+                out_size=run_info['_dump_size'],
                 pretty=True,
             )
+        return dump_path

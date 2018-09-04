@@ -132,7 +132,7 @@ class MPIndexer(Indexer):
             context=get_context('forkserver'),
         )
 
-    def update_objects(self, request, uuids, xmin):
+    def update_objects(self, request, uuids, xmin, is_reindex=True):
         # Ensure that we iterate over uuids in this thread not the pool task handler.
         uuid_count = len(uuids)
         workers = 1
@@ -144,11 +144,16 @@ class MPIndexer(Indexer):
         tasks = [(uuid, xmin, self._snapshot_id) for uuid in uuids]
         errors = []
         outputs = []
+        overrides = {
+            '_dump_size': 50000,
+            '_is_reindex': is_reindex,
+        }
         run_info = self.indexer_data_dump.get_run_info(
             os_getpid(),
             uuid_count,
             xmin,
             self._snapshot_id,
+            **overrides
         )
         run_info['chunksize'] = self.chunksize
         run_info['chunkiness'] = chunkiness
