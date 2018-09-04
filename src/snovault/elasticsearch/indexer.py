@@ -129,6 +129,7 @@ def index(request):
     first_txn = None
     snapshot_id = None
     restart=False
+    is_reindex = False
     invalidated = []
     xmin = -1
 
@@ -138,7 +139,7 @@ def index(request):
     # May have undone uuids from prior cycle
     state = IndexerState(es, INDEX, followups=stage_for_followup)
 
-    (xmin, invalidated, restart) = state.priority_cycle(request)
+    (xmin, invalidated, restart, is_reindex) = state.priority_cycle(request)
 
     # OPTIONAL: restart support
     if restart:  # Currently not bothering with restart!!!

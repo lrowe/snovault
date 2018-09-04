@@ -224,6 +224,7 @@ class IndexerState(object):
     def priority_cycle(self, request):
         '''Initial startup, reindex, or interupted prior cycle can all lead to a priority cycle.
            returns (discovered xmin, uuids, whether previous cycle was interupted).'''
+        is_reindex = False
         # Not yet started?
         initialized = self.get_obj("indexing")  # http://localhost:9201/snovault/meta/indexing
         if not initialized:
@@ -231,7 +232,7 @@ class IndexerState(object):
             state = self.get()
             state['status'] = 'uninitialized'
             self.put(state)
-            return (-1, [], False)  # primary indexer will know what to do and secondary indexer should do nothing yet
+            return (-1, [], False, is_reindex)  # primary indexer will know what to do and secondary indexer should do nothing yet
 
         state = self.get()
 
@@ -239,25 +240,26 @@ class IndexerState(object):
         reindex_uuids = self.reindex_requested(request)
         if reindex_uuids is not None and reindex_uuids != []:
             uuids_count = len(reindex_uuids)
+            is_reindex = True
             log.warn('%s reindex of %d uuids requested' % (self.state_id, uuids_count))
-            return (-1, reindex_uuids, False)
+            return (-1, reindex_uuids, False, is_reindex)
 
         if state.get('status', '') != 'indexing':
-            return (-1, [], False)
+            return (-1, [], False, is_reindex)
 
         xmin = state.get('xmin', -1)
         #snapshot = state.get('snapshot', None)
         if xmin == -1:  # or snapshot is None:
-            return (-1, [], False)
+            return (-1, [], False, is_reindex)
 
         #assert(self.get_count(self.done_set) == 0)  # Valid for cycle-level accounting only
         #undone_uuids = self.get_diff(self.todo_set, [self.done_set])  # works for any accountingu
         undone_uuids = self.get_list(self.todo_set)                    # works fastest for cycle-level accounting
         if len(undone_uuids) <= 0:  # TODO SEARCH_MAX?  SEARCH_MAX/10
-            return (-1, [], False)
+            return (-1, [], False, is_reindex)
 
         # Note: do not clean up last cycle yet because we could be restarted multiple times.
-        return (xmin, undone_uuids, True)
+        return (xmin, undone_uuids, True, is_reindex)
 
 
     def prep_for_followup(self, xmin, uuids):
