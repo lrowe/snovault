@@ -428,6 +428,7 @@ class Indexer(object):
         '''
         Handles any post processing needed for finished indexing processes
         '''
+        print(run_info)
         dump_path = self.indexer_data_dump.handle_outputs(outputs, run_info)
         # Change to info or warn after deugging
         log.error('Indexing data dump directory %s.', dump_path)

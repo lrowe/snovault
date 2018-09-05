@@ -9,11 +9,12 @@ import json
 from os.path import (
     isdir as os_isdir,
     expanduser as os_expanduser,
+    makedirs as os_makedirs,
 )
 
 
 ENCODED_HOME = os_expanduser("~")
-INDEXING_LOGS_DIR= ENCODED_HOME + '/.indexing-logs'
+INDEXING_LOGS_DIR = ENCODED_HOME + '/.indexing-logs'
 INITIAL_WRITE_DIR = INDEXING_LOGS_DIR + '/initial'
 REINDEX_WRITE_DIR = INDEXING_LOGS_DIR + '/reindexes'
 
@@ -59,6 +60,11 @@ class IndexDataDump(object):
         or move the INITIAL_WRITE_DIR data folder manually.
         '''
         if self._do_log and not os_isdir(INITIAL_WRITE_DIR):
+            try:
+                os_makedirs(INITIAL_WRITE_DIR)
+            except Exception as ecp:  # pylint: disable=broad-except
+                print('MAKE WARN:', repr(ecp))
+                return None
             return INITIAL_WRITE_DIR
         return None
 
