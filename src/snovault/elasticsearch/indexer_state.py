@@ -243,26 +243,31 @@ class IndexerState(object):
         # Rare call for reindexing...
         reindex_uuids = self.reindex_requested(request)
         if reindex_uuids is not None and reindex_uuids != []:
+            print('priority_cycle', 'reindex_uuids')
             uuids_count = len(reindex_uuids)
             is_reindex = True
             log.warn('%s reindex of %d uuids requested' % (self.state_id, uuids_count))
             return (-1, reindex_uuids, False, is_reindex)
 
         if state.get('status', '') != 'indexing':
+            print('priority_cycle', 'status not indexing')
             return (-1, [], False, is_reindex)
 
         xmin = state.get('xmin', -1)
         #snapshot = state.get('snapshot', None)
         if xmin == -1:  # or snapshot is None:
+            print('priority_cycle', 'xmin == -1')
             return (-1, [], False, is_reindex)
 
         #assert(self.get_count(self.done_set) == 0)  # Valid for cycle-level accounting only
         #undone_uuids = self.get_diff(self.todo_set, [self.done_set])  # works for any accountingu
         undone_uuids = self.get_list(self.todo_set)                    # works fastest for cycle-level accounting
         if len(undone_uuids) <= 0:  # TODO SEARCH_MAX?  SEARCH_MAX/10
+            print('priority_cycle', 'undone_uuids <= 0')
             return (-1, [], False, is_reindex)
 
         # Note: do not clean up last cycle yet because we could be restarted multiple times.
+        print('priority_cycle', 'end ret')
         return (xmin, undone_uuids, True, is_reindex)
 
 
