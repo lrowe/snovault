@@ -118,6 +118,7 @@ class IndexDataDump(object):
         '''
         return_uuids = []
         cnt = 0
+        uuids = list(uuids)
         for uuid in uuids[start:end]:
             cnt += 1
             if cnt < uuids_size:

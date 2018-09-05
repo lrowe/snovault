@@ -182,6 +182,7 @@ class IndexerState(object):
 
     def reindex_requested(self, request):
         '''returns list of uuids if a reindex was requested.'''
+        print('reindex_requested')
         override = self.get_obj(self.override)
         if override:
             if override.get('all_uuids', False):
