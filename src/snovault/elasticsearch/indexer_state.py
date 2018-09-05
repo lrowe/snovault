@@ -182,11 +182,11 @@ class IndexerState(object):
 
     def reindex_requested(self, request):
         '''returns list of uuids if a reindex was requested.'''
-        print('reindex_requested')
         override = self.get_obj(self.override)
         if override:
             if override.get('all_uuids', False):
                 self.delete_objs([self.override] + self.followup_lists)
+                print('check reindex_requested', 'all')
                 return self.all_indexable_uuids(request)
             else:
                 uuids =  override.get('uuids',[])
@@ -196,7 +196,9 @@ class IndexerState(object):
                         self.delete_objs([self.override] + self.followup_lists)
                     else:
                         self.delete_objs([self.override])
+                    print('check reindex_requested', len(uuids))
                     return uuids
+        print('check reindex_requested', 'none')
         return None
 
 
