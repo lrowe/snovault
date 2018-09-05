@@ -155,8 +155,7 @@ class IndexerState(object):
             if self.title == 'primary':  # If primary indexer delete the original master obj
                 print('delete_objs', ["indexing"])
                 self.delete_objs(["indexing"])  # http://localhost:9201/snovault/meta/indexing
-            else:
-                self.put_obj(self.override, {self.title : 'reindex', 'all_uuids': True})
+            self.put_obj(self.override, {self.title : 'reindex', 'all_uuids': True})
 
         else:
             uuid_list = requested.split(',')
@@ -180,14 +179,24 @@ class IndexerState(object):
         '''returns list of uuids pertinant to this indexer.'''
         return list(all_uuids(request.registry))
 
-    def reindex_requested(self, request):
-        '''returns list of uuids if a reindex was requested.'''
+    def reindex_requested(self, request, initialized):
+        '''
+        returns list of uuids if a reindex was requested.
+        * A reindex=all request resets indexing to uninitilized by removing
+        the indexing object.  This triggers a full reindexing.  In order to
+        know the difference between initial indexing and reindex = all
+        we check the override object and the passed in initialized arg.
+        '''
         override = self.get_obj(self.override)
         if override:
             if override.get('all_uuids', False):
-                self.delete_objs([self.override] + self.followup_lists)
-                print('check reindex_requested', 'all')
-                return self.all_indexable_uuids(request)
+                if not initialized:
+                    self.delete_objs([self.override])
+                    return 'all'
+                else:
+                    self.delete_objs([self.override] + self.followup_lists)
+                    print('check reindex_requested', 'all')
+                    return self.all_indexable_uuids(request)
             else:
                 uuids =  override.get('uuids',[])
                 uuid_count = len(uuids)
@@ -233,6 +242,9 @@ class IndexerState(object):
         is_reindex = False
         # Not yet started?
         initialized = self.get_obj("indexing")  # http://localhost:9201/snovault/meta/indexing
+        reindex_uuids = self.reindex_requested(request, initialized)
+        if reindex_uuids:
+            is_reindex = True
         if not initialized:
             print('priority_cycle', 'not initialized')
             self.delete_objs([self.override] + self.followup_lists)
@@ -243,8 +255,6 @@ class IndexerState(object):
 
         state = self.get()
 
-        # Rare call for reindexing...
-        reindex_uuids = self.reindex_requested(request)
         if reindex_uuids is not None and reindex_uuids != []:
             print('priority_cycle', 'reindex_uuids')
             uuids_count = len(reindex_uuids)
