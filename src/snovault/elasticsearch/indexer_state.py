@@ -150,8 +150,10 @@ class IndexerState(object):
 
     def request_reindex(self,requested):
         '''Requests full reindexing on next cycle'''
+        print('request_reindex', requested)
         if requested == 'all':
             if self.title == 'primary':  # If primary indexer delete the original master obj
+                print('delete_objs', ["indexing"])
                 self.delete_objs(["indexing"])  # http://localhost:9201/snovault/meta/indexing
             else:
                 self.put_obj(self.override, {self.title : 'reindex', 'all_uuids': True})
@@ -224,10 +226,12 @@ class IndexerState(object):
     def priority_cycle(self, request):
         '''Initial startup, reindex, or interupted prior cycle can all lead to a priority cycle.
            returns (discovered xmin, uuids, whether previous cycle was interupted).'''
+        print('priority_cycle', '')
         is_reindex = False
         # Not yet started?
         initialized = self.get_obj("indexing")  # http://localhost:9201/snovault/meta/indexing
         if not initialized:
+            print('priority_cycle', 'not initialized')
             self.delete_objs([self.override] + self.followup_lists)
             state = self.get()
             state['status'] = 'uninitialized'
@@ -557,6 +561,7 @@ class IndexerState(object):
 
 @view_config(route_name='_indexer_state', request_method='GET', permission="index")
 def indexer_state_show(request):
+    print('indexer_state_show', request.params.get("reindex"))
     es = request.registry[ELASTIC_SEARCH]
     INDEX = request.registry.settings['snovault.elasticsearch.index']
     state = IndexerState(es,INDEX)
