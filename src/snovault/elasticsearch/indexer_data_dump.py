@@ -174,7 +174,9 @@ class IndexDataDump(object):
             'uuid_count': uuid_count,
             'xmin': xmin,
         }
-        return run_info.update(overrides)
+        if overrides:
+            run_info.update(overrides)
+        return run_info
 
     def handle_outputs(self, outputs, run_info):
         '''Do what settings say to do with outputs'''
