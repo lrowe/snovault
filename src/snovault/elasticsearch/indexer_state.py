@@ -155,8 +155,10 @@ class IndexerState(object):
             if self.title == 'primary':  # If primary indexer delete the original master obj
                 print('delete_objs', ["indexing"])
                 self.delete_objs(["indexing"])  # http://localhost:9201/snovault/meta/indexing
-            self.put_obj(self.override, {self.title : 'reindex', 'all_uuids': True})
-            print('request_reindex all', self.get_obj(self.override))
+            override = self.get_obj(self.override)
+            override.update({self.title : 'reindex'})
+            self.put_obj(self.override, override)
+            print('self.title request_reindex all', self.get_obj(self.override))
 
         else:
             uuid_list = requested.split(',')
