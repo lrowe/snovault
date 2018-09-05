@@ -188,6 +188,7 @@ class IndexerState(object):
         we check the override object and the passed in initialized arg.
         '''
         override = self.get_obj(self.override)
+        print('oeverride',  override)
         if override:
             if override.get('all_uuids', False):
                 if not initialized:
