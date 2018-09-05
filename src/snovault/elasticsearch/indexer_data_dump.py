@@ -60,17 +60,17 @@ class IndexDataDump(object):
         * To dump more indexing data use _dump_reindex if possible
         or move the INITIAL_WRITE_DIR data folder manually.
         '''
-        print('1', '_dump_intial_index', self._do_log, INITIAL_WRITE_DIR)
         if self._do_log and not os_isdir(INITIAL_WRITE_DIR):
-            print('2', INITIAL_WRITE_DIR)
             try:
                 os_makedirs(INITIAL_WRITE_DIR)
             except Exception as ecp:  # pylint: disable=broad-except
-                print('MAKE WARN:', repr(ecp))
+                print(
+                    'MAKE WARN:',
+                    'Could not create initial dump dir',
+                    repr(ecp)
+                )
                 return None
-            print('y', 'passed')
             return INITIAL_WRITE_DIR
-        print('x', 'NONE')
         return None
 
     def _dump_reindex(self, is_reindex):
@@ -203,17 +203,27 @@ class IndexDataDump(object):
         '''Do what settings say to do with outputs'''
         dump_path = None
         if self._dump_intial_index():
-            dump_path = '%s/%s/uuids-%d' % (
+            dump_path = '%s/%s_uuids-%d' % (
                 INITIAL_WRITE_DIR,
                 self._get_time_str(),
                 run_info['uuid_count'],
             )
         elif self._dump_reindex(run_info['_is_reindex']):
-            dump_path = '%s/%s/uuids-%d' % (
-                REINDEX_WRITE_DIR,
-                self._get_time_str(),
-                run_info['uuid_count'],
-            )
+            time_str = self._get_time_str()
+            out_dir = '%s/%s' % (REINDEX_WRITE_DIR, time_str)
+            try:
+                os_makedirs(out_dir)
+            except Exception as ecp:  # pylint: disable=broad-except
+                print(
+                    'MAKE WARN:',
+                    'Could not create reindex dump dir',
+                    repr(ecp)
+                )
+            else:
+                dump_path = '%s/uuids-%d' % (
+                    out_dir,
+                    run_info['uuid_count'],
+                )
         if dump_path:
             outputs.append(run_info)
             _dump_output_to_file(
