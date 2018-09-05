@@ -138,6 +138,7 @@ def index(request):
 
     # May have undone uuids from prior cycle
     state = IndexerState(es, INDEX, followups=stage_for_followup)
+    print('*' * 25)
     print('indexer.py', 'get listener priority cycle', indexer.indexer_name)
     (xmin, invalidated, restart, is_reindex) = state.priority_cycle(request)
 
