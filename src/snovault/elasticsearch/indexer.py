@@ -312,6 +312,7 @@ class Indexer(object):
         self._force = None
         self.indexer_name = self._get_name(registry)
         do_log = False
+        print(self.indexer_name)
         if self.indexer_name in ['primaryindexer', 'mp-primaryindexer']:
             do_log = True
         self.indexer_data_dump = IndexDataDump(
