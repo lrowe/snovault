@@ -59,13 +59,17 @@ class IndexDataDump(object):
         * To dump more indexing data use _dump_reindex if possible
         or move the INITIAL_WRITE_DIR data folder manually.
         '''
+        print('1', '_dump_intial_index')
         if self._do_log and not os_isdir(INITIAL_WRITE_DIR):
+            print('2', INITIAL_WRITE_DIR)
             try:
                 os_makedirs(INITIAL_WRITE_DIR)
             except Exception as ecp:  # pylint: disable=broad-except
                 print('MAKE WARN:', repr(ecp))
                 return None
+            print('y', 'passed')
             return INITIAL_WRITE_DIR
+        print('x', 'NONE')
         return None
 
     def _dump_reindex(self, is_reindex):
