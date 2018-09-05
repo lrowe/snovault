@@ -232,4 +232,5 @@ class IndexDataDump(object):
                 out_size=run_info['_dump_size'],
                 pretty=True,
             )
+        print('dump path', dump_path)
         return dump_path
