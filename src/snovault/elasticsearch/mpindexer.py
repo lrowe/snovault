@@ -147,21 +147,21 @@ class MPIndexer(Indexer):
         tasks = [(uuid, xmin, self._snapshot_id) for uuid in uuids]
         errors = []
         outputs = []
-        overrides = {
+        updates = {
             '_dump_size': 50000,
             '_is_reindex': is_reindex,
+            'chunksize': self.chunksize,
+            'chunkiness': chunkiness,
+            'processes': self.processes,
+            'workers': workers,
         }
         run_info = self.indexer_data_dump.get_run_info(
             os_getpid(),
             uuid_count,
             xmin,
             self._snapshot_id,
-            **overrides
+            **updates
         )
-        run_info['chunksize'] = self.chunksize
-        run_info['chunkiness'] = chunkiness
-        run_info['processes'] = self.processes
-        run_info['workers'] = workers
         try:
             for i, output in enumerate(self.pool.imap_unordered(
                     update_object_in_snapshot, tasks, chunkiness)):

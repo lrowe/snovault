@@ -161,21 +161,31 @@ class IndexDataDump(object):
         }
 
     @staticmethod
-    def get_run_info(pid, uuid_count, xmin, snapshot_id, **overrides):
+    def get_run_info(
+            pid,
+            uuid_count,
+            xmin,
+            snapshot_id,
+            **updates
+        ):
         '''Similar to indexer_info.  Added to output with uuid='run_info'''
         run_info = {
             '_dump_size': 100000,
             '_is_reindex': False,
+            'chunksize': None,
+            'chunkiness': None,
             'end_time': None,
             'pid': pid,
+            'processes': None,
             'snapshot_id': snapshot_id,
             'start_time': time.time(),
             'uuid': 'run_info',
             'uuid_count': uuid_count,
+            'workers': None,
             'xmin': xmin,
         }
-        if overrides:
-            run_info.update(overrides)
+        if updates:
+            run_info.update(updates)
         return run_info
 
     def handle_outputs(self, outputs, run_info):
@@ -187,7 +197,7 @@ class IndexDataDump(object):
                 self._get_time_str(),
                 run_info['uuid_count'],
             )
-        elif self._dump_reindex(run_info['is_reindex']):
+        elif self._dump_reindex(run_info['_is_reindex']):
             dump_path = '%s/%s/uuids-%d' % (
                 REINDEX_WRITE_DIR,
                 self._get_time_str(),
