@@ -49,7 +49,6 @@ def _dump_output_to_file(
 class IndexDataDump(object):
     '''Wraps the logging module for output indexing process'''
     def __init__(self, indexer_name, registry, do_log=False):
-        print('INIT IndexDataDump', do_log)
         self._do_log = do_log
         self._index_info = self._get_indexer_info(indexer_name, registry)
 
@@ -200,6 +199,7 @@ class IndexDataDump(object):
         return run_info
 
     def handle_outputs(self, outputs, run_info):
+        print('handle_outputs', run_info)
         '''Do what settings say to do with outputs'''
         dump_path = None
         if self._dump_intial_index():
@@ -208,6 +208,7 @@ class IndexDataDump(object):
                 self._get_time_str(),
                 run_info['uuid_count'],
             )
+            print('_dump_intial_index', dump_path)
         elif self._dump_reindex(run_info['_is_reindex']):
             time_str = self._get_time_str()
             out_dir = '%s/%s' % (REINDEX_WRITE_DIR, time_str)
@@ -224,6 +225,7 @@ class IndexDataDump(object):
                     out_dir,
                     run_info['uuid_count'],
                 )
+            print('_dump_reindex', dump_path)
         if dump_path:
             outputs.append(run_info)
             _dump_output_to_file(
@@ -232,5 +234,4 @@ class IndexDataDump(object):
                 out_size=run_info['_dump_size'],
                 pretty=True,
             )
-        print('dump path', dump_path)
         return dump_path

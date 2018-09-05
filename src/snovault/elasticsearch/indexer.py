@@ -312,7 +312,6 @@ class Indexer(object):
         self._force = None
         self.indexer_name = self._get_name(registry)
         do_log = False
-        print(self.indexer_name)
         if self.indexer_name in ['primaryindexer', 'mp-primaryindexer']:
             do_log = True
         self.indexer_data_dump = IndexDataDump(
@@ -429,7 +428,6 @@ class Indexer(object):
         '''
         Handles any post processing needed for finished indexing processes
         '''
-        print(run_info)
         dump_path = self.indexer_data_dump.handle_outputs(outputs, run_info)
         # Change to info or warn after deugging
         log.error('Indexing data dump directory %s.', dump_path)
