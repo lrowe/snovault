@@ -6,10 +6,10 @@ Optionally writes indexing data to file
 import time
 import json
 
+from os import makedirs as os_makedirs
 from os.path import (
     isdir as os_isdir,
     expanduser as os_expanduser,
-    makedirs as os_makedirs,
 )
 
 
