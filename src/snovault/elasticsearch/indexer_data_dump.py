@@ -49,6 +49,7 @@ def _dump_output_to_file(
 class IndexDataDump(object):
     '''Wraps the logging module for output indexing process'''
     def __init__(self, indexer_name, registry, do_log=False):
+        print('INIT IndexDataDump', do_log)
         self._do_log = do_log
         self._index_info = self._get_indexer_info(indexer_name, registry)
 
