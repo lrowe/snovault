@@ -80,9 +80,9 @@ setup(
     entry_points='''
         [console_scripts]
         batchupgrade = snovault.batchupgrade:main
-        create-mapping = snovault.elasticsearch.create_mapping:main
+        create-mapping = snovault.es_wrapper.create_mapping:main
         dev-servers = snovault.dev_servers:main
-        es-index-listener = snovault.elasticsearch.es_index_listener:main
+        es-index-listener = snovault.es_wrapper.es_index_listener:main
 
         add-date-created = snowflakes.commands.add_date_created:main
         check-rendering = snowflakes.commands.check_rendering:main
@@ -100,7 +100,7 @@ setup(
         snowflakes = snowflakes:main
 
         [paste.composite_factory]
-        indexer = snovault.elasticsearch.es_index_listener:composite
+        indexer = snovault.es_wrapper.es_index_listener:composite
 
         [paste.filter_app_factory]
         memlimit = snowflakes.memlimit:filter_app
