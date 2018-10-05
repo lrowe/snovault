@@ -72,7 +72,7 @@ def main(global_config, **local_config):
         hostname = subprocess.check_output(hostname_command, shell=True).strip()
 
     config = Configurator(settings=settings)
-    from snovault.elasticsearch import APP_FACTORY
+    from snovault.es_wrapper import APP_FACTORY
     config.registry[APP_FACTORY] = main  # used by mp_indexer
     config.include(app_version)
 
@@ -94,7 +94,7 @@ def main(global_config, **local_config):
     config.include('.root')
 
     if 'elasticsearch.server' in config.registry.settings:
-        config.include('snovault.elasticsearch')
+        config.include('snovault.es_wrapper')
         config.include('snowflakes.viewconfigs.views')
 
     config.include(static_resources)

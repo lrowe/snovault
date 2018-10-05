@@ -35,14 +35,14 @@ def app_settings(wsgi_server_host_port, elasticsearch_server, postgresql_server)
 @pytest.yield_fixture(scope='session')
 def app(app_settings):
     from snowflakes import main
-    from snovault.elasticsearch import create_mapping
+    from snovault.es_wrapper import create_mapping
     app = main({}, **app_settings)
 
     create_mapping.run(app)
     yield app
 
     # Shutdown multiprocessing pool to close db conns.
-    from snovault.elasticsearch import INDEXER
+    from snovault.es_wrapper import INDEXER
     app.registry[INDEXER].shutdown()
 
     from snovault import DBSESSION

@@ -40,7 +40,7 @@ def connection(registry):
 
 @pytest.fixture
 def elasticsearch(registry):
-    from snovault.elasticsearch import ELASTIC_SEARCH
+    from snovault.es_wrapper import ELASTIC_SEARCH
     return registry[ELASTIC_SEARCH]
 
 

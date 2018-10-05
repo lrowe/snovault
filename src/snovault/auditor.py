@@ -9,7 +9,7 @@ import venusian
 from past.builtins import basestring
 from pyramid.view import view_config
 from .calculated import calculated_property
-from .elasticsearch.interfaces import ICachedItem
+from .es_wrapper.interfaces import ICachedItem
 from .interfaces import (
     AUDITOR,
     TYPES,
