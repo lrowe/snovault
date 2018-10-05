@@ -11,7 +11,7 @@ ReportView<-SearchView<-BaseView
 """
 from pyramid.httpexceptions import HTTPBadRequest  # pylint: disable=import-error
 
-from snovault.elasticsearch.create_mapping import TEXT_FIELDS
+from snovault.es_wrapper.create_mapping import TEXT_FIELDS
 from snovault.helpers.helper import (
     get_pagination,
     normalize_query

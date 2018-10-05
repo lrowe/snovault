@@ -67,7 +67,7 @@ def main():
     logging.getLogger('snovault').setLevel(logging.INFO)
 
     from snovault.tests import elasticsearch_fixture, postgresql_fixture
-    from snovault.elasticsearch import create_mapping
+    from snovault.es_wrapper import create_mapping
     datadir = os.path.abspath(args.datadir)
     pgdata = os.path.join(datadir, 'pgdata')
     esdata = os.path.join(datadir, 'esdata')

@@ -5,7 +5,7 @@ Some Desc
 from pyramid.security import effective_principals  # pylint: disable=import-error
 
 from snovault import TYPES
-from snovault.elasticsearch import ELASTIC_SEARCH
+from snovault.es_wrapper import ELASTIC_SEARCH
 from snovault.helpers.helper import (
     get_pagination,
     prepare_search_term,

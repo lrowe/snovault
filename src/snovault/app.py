@@ -183,7 +183,7 @@ def main(global_config, **local_config):
         settings['persona.audiences'] += '\nhttp://%s:6543' % hostname
 
     config = Configurator(settings=settings)
-    from snovault.elasticsearch import APP_FACTORY
+    from snovault.es_wrapper import APP_FACTORY
     config.registry[APP_FACTORY] = main  # used by mp_indexer
     config.include(app_version)
 

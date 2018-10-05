@@ -38,7 +38,7 @@ def app(app_settings):
     yield app
 
     # Shutdown multiprocessing pool to close db conns.
-    from snovault.elasticsearch import INDEXER
+    from snovault.es_wrapper import INDEXER
     app.registry[INDEXER].shutdown()
 
     from snovault import DBSESSION
@@ -55,7 +55,7 @@ def DBSession(app):
 
 @pytest.fixture(autouse=True)
 def teardown(app, dbapi_conn):
-    from snovault.elasticsearch import create_mapping
+    from snovault.es_wrapper import create_mapping
     create_mapping.run(app)
     cursor = dbapi_conn.cursor()
     cursor.execute("""TRUNCATE resources, transactions CASCADE;""")
@@ -101,7 +101,7 @@ def test_indexing_simple(testapp, indexer_testapp):
 
 
 def test_indexer_state(dummy_request):
-    from snovault.elasticsearch.indexer_state import IndexerState
+    from snovault.es_wrapper.indexer_state import IndexerState
     INDEX = dummy_request.registry.settings['snovault.elasticsearch.index']
     es = dummy_request.registry['elasticsearch']
     state = IndexerState(es,INDEX)

@@ -7,7 +7,7 @@ Example.
 
 from webtest import TestApp
 from snovault import STORAGE
-from snovault.elasticsearch import ELASTIC_SEARCH
+from snovault.es_wrapper import ELASTIC_SEARCH
 import atexit
 import datetime
 import elasticsearch.exceptions
