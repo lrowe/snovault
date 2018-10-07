@@ -1,6 +1,11 @@
 '''Initialize Elasticsearch Indexer'''
-from multiproc import MPIndexer
-from primary import PrimaryIndexer
+from .multiproc import MPIndexer
+from .primary import PrimaryIndexer
+from .views import get_current_xmin
+from .state import (
+    IndexerState,
+    all_uuids,
+)
 
 
 APP_FACTORY = 'app_factory'

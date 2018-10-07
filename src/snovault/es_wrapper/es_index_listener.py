@@ -1,43 +1,54 @@
-"""\
+"""
 Example.
 
     %(prog)s production.ini
 
 """
-
-from webtest import TestApp
-from snovault import STORAGE
-from snovault.es_wrapper import ELASTIC_SEARCH
 import atexit
 import datetime
-import elasticsearch.exceptions
-import json
 import logging
 import os
-import psycopg2
 import select
 import signal
 import socket
-import sqlalchemy.exc
 import sys
 import threading
 import time
-from urllib.parse import parse_qsl
+import json
 
-log = logging.getLogger(__name__)
+from urllib.parse import parse_qsl
+from webtest import TestApp
+
+import elasticsearch.exceptions
+import sqlalchemy.exc
+import psycopg2
+
+from snovault import STORAGE
+from snovault.es_wrapper import ELASTIC_SEARCH
+
 
 EPILOG = __doc__
 DEFAULT_TIMEOUT = 60
+log = logging.getLogger(__name__)  # pylint: disable=invalid-name
 PY2 = sys.version_info[0] == 2
+
 
 # We need this because of MVCC visibility.
 # See slide 9 at http://momjian.us/main/writings/pgsql/mvcc.pdf
 # https://devcenter.heroku.com/articles/postgresql-concurrency
 
 
-def run(testapp, timeout=DEFAULT_TIMEOUT, dry_run=False, path='/index', control=None, update_status=None):
+def run(
+        testapp,
+        timeout=DEFAULT_TIMEOUT,
+        dry_run=False,
+        path='/index',
+        control=None,
+        update_status=None
+    ):
+    '''ES Listener for all indexers'''
+    # pylint: disable=too-many-statements, too-many-branches, too-many-locals, too-many-arguments
     assert update_status is not None
-
     timestamp = datetime.datetime.now().isoformat()
     update_status(
         status='connecting',
@@ -46,19 +57,19 @@ def run(testapp, timeout=DEFAULT_TIMEOUT, dry_run=False, path='/index', control=
     )
     # Make sure elasticsearch is up before trying to index.
     if path == '/index_file':
-        es = testapp.app.registry['snp_search']
+        es_inst = testapp.app.registry['snp_search']
     else:
-        es = testapp.app.registry[ELASTIC_SEARCH]
+        es_inst = testapp.app.registry[ELASTIC_SEARCH]
     # Wait until cluster comes up
-    es.cluster.health(wait_for_status='yellow', request_timeout=60)
-    es.info()
-
-    log.info('es_index_listener given path: ' + path)
-
+    es_inst.cluster.health(wait_for_status='yellow', request_timeout=60)
+    es_inst.info()
+    log.info('es_index_listener given path: %s', path)
     max_xid = 0
-    DBSession = testapp.app.registry[STORAGE].write.DBSession
-    engine = DBSession.bind  # DBSession.bind is configured by app init
-    # noqa http://docs.sqlalchemy.org/en/latest/faq.html#how-do-i-get-at-the-raw-dbapi-connection-when-using-an-engine
+    db_session = testapp.app.registry[STORAGE].write.DBSession
+    engine = db_session.bind  # DBSession.bind is configured by app init
+    # noqa
+    # http://docs.sqlalchemy.org/en/latest/
+    # faq.html#how-do-i-get-at-the-raw-dbapi-connection-when-using-an-engine
     connection = engine.pool.unique_connection()
     try:
         connection.detach()
@@ -77,11 +88,11 @@ def run(testapp, timeout=DEFAULT_TIMEOUT, dry_run=False, path='/index', control=
                     cursor.execute("""SELECT pg_is_in_recovery();""")
                     recovery, = cursor.fetchone()
                     if not recovery:
-                        # http://initd.org/psycopg/docs/advanced.html#asynchronous-notifications
+                        # http://initd.org/psycopg/docs/advanced.html#
+                        # asynchronous-notifications
                         cursor.execute("""LISTEN "snovault.transaction";""")
                         log.debug("Listener connected")
                         listening = True
-
                 cursor.execute("""SELECT txid_current_snapshot();""")
                 snapshot, = cursor.fetchone()
                 timestamp = datetime.datetime.now().isoformat()
@@ -93,18 +104,17 @@ def run(testapp, timeout=DEFAULT_TIMEOUT, dry_run=False, path='/index', control=
                     timestamp=timestamp,
                     max_xid=max_xid,
                 )
-
                 try:
                     res = testapp.post_json(path, {
                         'record': True,
                         'dry_run': dry_run,
                         'recovery': recovery,
                     })
-                except Exception as e:
+                except Exception as ecp:  # pylint: disable=broad-except
                     timestamp = datetime.datetime.now().isoformat()
                     log.exception('index failed at max xid: %d', max_xid)
                     update_status(error={
-                        'error': repr(e),
+                        'error': repr(ecp),
                         'max_xid': max_xid,
                         'timestamp': timestamp,
                     })
@@ -127,43 +137,41 @@ def run(testapp, timeout=DEFAULT_TIMEOUT, dry_run=False, path='/index', control=
                     max_xid=max_xid,
                 )
                 # Wait on notifcation
-                readable, writable, err = select.select(sockets, [], sockets, timeout)
-
+                readable, _, err = select.select(sockets, [], sockets, timeout)
                 if err:
                     raise Exception('Socket error')
-
                 if control in readable:
                     command = control.recv(1)
                     log.debug('received command: %r', command)
                     if not command:
-                        # Other end shutdown
                         return
-
                 if conn in readable:
                     conn.poll()
-
                 while conn.notifies:
                     notify = conn.notifies.pop()
                     xid = int(notify.payload)
                     max_xid = max(max_xid, xid)
                     log.debug('NOTIFY %s, %s', notify.channel, notify.payload)
-
     finally:
         connection.close()
 
 
 class ErrorHandlingThread(threading.Thread):
+    '''Error Handling Thread'''
     if PY2:
         @property
         def _kwargs(self):
+            # pylint: disable=no-member
             return self._Thread__kwargs
 
         @property
         def _args(self):
+            # pylint: disable=no-member
             return self._Thread__args
 
         @property
         def _target(self):
+            # pylint: disable=no-member
             return self._Thread__target
 
     def run(self):
@@ -172,17 +180,20 @@ class ErrorHandlingThread(threading.Thread):
         control = self._kwargs['control']
         while True:
             try:
-                self._target(*self._args, **self._kwargs)
-            except (psycopg2.OperationalError, sqlalchemy.exc.OperationalError, elasticsearch.exceptions.ConnectionError) as e:
+                self._target(*self._args, **self._kwargs)  # pylint: disable=not-callable
+            except (
+                    psycopg2.OperationalError,
+                    sqlalchemy.exc.OperationalError,
+                    elasticsearch.exceptions.ConnectionError
+                ) as ecp:
                 # Handle database restart
-                log.warning('Database not there, maybe starting up: %r', e)
+                log.warning('Database not there, maybe starting up: %r', ecp)
                 timestamp = datetime.datetime.now().isoformat()
                 update_status(
                     timestamp=timestamp,
                     status='sleeping',
-                    error={'error': repr(e), 'timestamp': timestamp},
+                    error={'error': repr(ecp), 'timestamp': timestamp},
                 )
-
                 readable, _, _ = select.select([control], [], [], timeout)
                 if control in readable:
                     command = control.recv(1)
@@ -190,29 +201,32 @@ class ErrorHandlingThread(threading.Thread):
                     if not command:
                         # Other end shutdown
                         return
-
                 log.debug('sleeping')
                 time.sleep(timeout)
                 continue
-            except Exception:
+            except Exception as ecp:  # pylint: disable=broad-except
                 # Unfortunately mod_wsgi does not restart immediately
-                log.exception('Exception in listener, restarting process at next request.')
+                log.exception(
+                    'Exception in listener, '
+                    'restarting process at next request: %r',
+                    ecp,
+                )
                 os.kill(os.getpid(), signal.SIGINT)
             break
 
 
 def composite(loader, global_conf, **settings):
+    '''Composite function'''
+    # pylint: disable=too-many-locals
     listener = None
-
     # Register before testapp creation.
     @atexit.register
-    def join_listener():
+    def join_listener():  # pylint: disable=unused-variable
+        '''Some thing in composite'''
         if listener:
             log.debug('joining listening thread')
             listener.join()
-
     path = settings.get('path', '/index')
-
     # Composite app is used so we can load the main app
     app_name = settings.get('app', None)
     app = loader.get_app(app_name, global_conf=global_conf)
@@ -222,10 +236,8 @@ def composite(loader, global_conf, **settings):
         'REMOTE_USER': username,
     }
     testapp = TestApp(app, environ)
-
     # Use sockets to integrate with select
     controller, control = socket.socketpair()
-
     timestamp = datetime.datetime.now().isoformat()
     status_holder = {
         'status': {
@@ -236,7 +248,8 @@ def composite(loader, global_conf, **settings):
         },
     }
 
-    def update_status(error=None, result=None, indexed=None, **kw):
+    def update_status(error=None, result=None, indexed=None, **kw):  # pylint: disable=unused-argument
+        '''Some part of the composite'''
         # Setting a value in a dictionary is atomic
         status = status_holder['status'].copy()
         status.update(**kw)
@@ -245,6 +258,7 @@ def composite(loader, global_conf, **settings):
         if result is not None:
             status['results'] = [result] + status['results'][:9]
         status_holder['status'] = status
+
     kwargs = {
         'testapp': testapp,
         'control': control,
@@ -253,7 +267,6 @@ def composite(loader, global_conf, **settings):
     }
     if 'timeout' in settings:
         kwargs['timeout'] = float(settings['timeout'])
-
     listener = ErrorHandlingThread(target=run, name='listener', kwargs=kwargs)
     listener.daemon = True
     log.debug('starting listener')
@@ -261,12 +274,15 @@ def composite(loader, global_conf, **settings):
 
     # Register before testapp creation.
     @atexit.register
-    def shutdown_listener():
+    def shutdown_listener():  # pylint: disable=unused-variable
+        '''Some part of the composite'''
         log.debug('shutting down listening thread')
-        control  # Prevent early gc
+        # Prevent early gc
+        control  # pylint: disable=pointless-statement
         controller.shutdown(socket.SHUT_RDWR)
 
-    def status_app(environ, start_response):
+    def status_app(environ, start_response):  # pylint: disable=unused-argument
+        '''Some part of the composite'''
         status = '200 OK'
         response_headers = [('Content-type', 'application/json')]
         start_response(status, response_headers)
@@ -276,7 +292,8 @@ def composite(loader, global_conf, **settings):
 
 
 def internal_app(configfile, app_name=None, username=None):
-    from webtest import TestApp
+    '''Called from main'''
+    from webtest import TestApp  # pylint: disable=reimported, redefined-outer-name
     from pyramid import paster
     app = paster.get_app(configfile, app_name)
     if not username:
@@ -289,35 +306,54 @@ def internal_app(configfile, app_name=None, username=None):
 
 
 def main():
+    '''Main Function'''
     import argparse
     parser = argparse.ArgumentParser(
         description="Listen for changes from postgres and index in elasticsearch",
         epilog=EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument('--app-name', help="Pyramid app name in configfile")
     parser.add_argument(
-        '--username', '-u', default='INDEXER', help="Import username")
+        '--app-name',
+        help="Pyramid app name in configfile"
+    )
     parser.add_argument(
-        '--dry-run', action='store_true', help="Don't post to ES, just print")
+        '--username',
+        '-u',
+        default='INDEXER',
+        help="Import username"
+    )
     parser.add_argument(
-        '-v', '--verbose', action='store_true', help="Print debug level logging")
+        '--dry-run',
+        action='store_true',
+        help="Don't post to ES, just print"
+    )
     parser.add_argument(
-        '--poll-interval', type=int, default=DEFAULT_TIMEOUT,
-        help="Poll interval between notifications")
+        '-v',
+        '--verbose',
+        action='store_true',
+        help="Print debug level logging"
+    )
     parser.add_argument(
-        '--path', default='/index',
-        help="Path of indexing view (/index or /index_file)")
-    parser.add_argument('config_uri', help="path to configfile")
+        '--poll-interval',
+        type=int,
+        default=DEFAULT_TIMEOUT,
+        help="Poll interval between notifications"
+    )
+    parser.add_argument(
+        '--path',
+        default='/index',
+        help="Path of indexing view (/index or /index_file)"
+    )
+    parser.add_argument(
+        'config_uri',
+        help="path to configfile"
+    )
     args = parser.parse_args()
-
     logging.basicConfig()
     testapp = internal_app(args.config_uri, args.app_name, args.username)
-
-    # Loading app will have configured from config file. Reconfigure here:
     if args.verbose or args.dry_run:
         logging.getLogger('snovault').setLevel(logging.DEBUG)
-
     return run(testapp, args.poll_interval, args.dry_run, args.path)
 
 

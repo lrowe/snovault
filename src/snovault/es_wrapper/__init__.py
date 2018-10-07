@@ -1,55 +1,63 @@
-from snovault.json_renderer import json_renderer
-from snovault.util import get_root_request
+'''Snovault Elasticsearch initialization'''
+import json
+import sys
+
 from elasticsearch import Elasticsearch
 from elasticsearch.connection import Urllib3HttpConnection
 from elasticsearch.serializer import SerializationError
+
 from pyramid.settings import (
     asbool,
     aslist,
 )
+
+from snovault.json_renderer import json_renderer
+from snovault.util import get_root_request
+
 from .indexers import (
-    Indexer,
-    SEARCH_MAX,
+    PrimaryIndexer,
     IndexerState,
     all_uuids,
     get_current_xmin,
-)
-from .interfaces import (
     APP_FACTORY,
     ELASTIC_SEARCH,
     INDEXER,
+    SEARCH_MAX,
+)
+from .interfaces import (
     SNP_SEARCH_ES,
 )
-import json
-import sys
+
+
 PY2 = sys.version_info.major == 2
 
 
 def includeme(config):
+    '''Initialization for elasticserach wrapper and indexers'''
     settings = config.registry.settings
     settings.setdefault('snovault.elasticsearch.index', 'snovault')
-
-    config.add_request_method(datastore, 'datastore', reify=True)
-
+    config.add_request_method(
+        request_method_datastore,
+        'datastore',
+        reify=True
+    )
     addresses = aslist(settings['elasticsearch.server'])
     config.registry[ELASTIC_SEARCH] = Elasticsearch(
         addresses,
         serializer=PyramidJSONSerializer(json_renderer),
         connection_class=TimedUrllib3HttpConnection,
         retry_on_timeout=True,
-        # maxsize=50
     )
-
     config.include('.cached_views')
     config.include('.esstorage')
-
     config.include('.indexer')
     config.include('.indexer_state')
     if asbool(settings.get('indexer')) and not PY2:
         config.include('.mpindexer')
 
 
-def datastore(request):
+def request_method_datastore(request):
+    '''Datastore function for config add_request_method'''
     if request.__parent__ is not None:
         return request.__parent__.datastore
     datastore = 'database'
@@ -63,48 +71,89 @@ def datastore(request):
 
 
 class PyramidJSONSerializer(object):
+    '''Snovault Override Serializer passed into Elasticsearch'''
     mimetype = 'application/json'
 
     def __init__(self, renderer):
         self.renderer = renderer
 
-    def loads(self, s):
+    def loads(self, item):
+        '''Override serializer loads method'''
+        # pylint: disable=no-self-use
         try:
-            return json.loads(s)
-        except (ValueError, TypeError) as e:
-            raise SerializationError(s, e)
+            return json.loads(item)
+        except (ValueError, TypeError) as ecp:
+            raise SerializationError(item, ecp)
 
     def dumps(self, data):
-        # don't serialize strings
+        '''Override serializer dumps method'''
         if isinstance(data, (type(''), type(u''))):
             return data
-
         try:
             return self.renderer.dumps(data)
-        except (ValueError, TypeError) as e:
-            raise SerializationError(data, e)
+        except (ValueError, TypeError) as ecp:
+            raise SerializationError(data, ecp)
 
 
 class TimedUrllib3HttpConnection(Urllib3HttpConnection):
+    '''Snovault Override Urllib3HttpConnection passed into Elasticsearch'''
     stats_count_key = 'es_count'
     stats_time_key = 'es_time'
 
     def stats_record(self, duration):
+        '''Set Stats keys'''
         request = get_root_request()
         if request is None:
             return
-
         duration = int(duration * 1e6)
-        stats = request._stats
+        stats = request._stats  # pylint: disable=protected-access
         stats[self.stats_count_key] = stats.get(self.stats_count_key, 0) + 1
         stats[self.stats_time_key] = stats.get(self.stats_time_key, 0) + duration
 
-    def log_request_success(self, method, full_url, path, body, status_code, response, duration):
+    def log_request_success(
+            self,
+            method,
+            full_url,
+            path,
+            body,
+            status_code,
+            response,
+            duration
+        ):
+        '''Override log_request_success method'''
+        # pylint: disable=too-many-arguments
         self.stats_record(duration)
         return super(TimedUrllib3HttpConnection, self).log_request_success(
-            method, full_url, path, body, status_code, response, duration)
+            method,
+            full_url,
+            path,
+            body,
+            status_code,
+            response,
+            duration
+        )
 
-    def log_request_fail(self, method, full_url, path, body, duration, status_code=None, response=None, exception=None):
+    def log_request_fail(
+            self,
+            method,
+            full_url,
+            path,
+            body,
+            duration,
+            status_code=None,
+            response=None,
+            exception=None
+        ):
+        '''Override log_request_success method'''
+        # pylint: disable=too-many-arguments
         self.stats_record(duration)
         return super(TimedUrllib3HttpConnection, self).log_request_fail(
-            method, full_url, path, body, duration, status_code, response, exception)
+            method,
+            full_url,
+            path,
+            body,
+            duration,
+            status_code,
+            response,
+            exception
+        )

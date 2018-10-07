@@ -1,18 +1,22 @@
-""" Cached views used when model was pulled from elasticsearch.
 """
-
+Cached views used when model was pulled from elasticsearch.
+"""
 from itertools import chain
+
 from pyramid.httpexceptions import HTTPForbidden
 from pyramid.view import view_config
+
 from .interfaces import ICachedItem
 
 
 def includeme(config):
+    '''Initialize Cached Views'''
     config.scan(__name__)
 
 
 @view_config(context=ICachedItem, request_method='GET', name='embedded')
 def cached_view_embedded(context, request):
+    '''Cached View Embedded'''
     source = context.model.source
     allowed = set(source['principals_allowed']['view'])
     if allowed.isdisjoint(request.effective_principals):
@@ -22,6 +26,7 @@ def cached_view_embedded(context, request):
 
 @view_config(context=ICachedItem, request_method='GET', name='object')
 def cached_view_object(context, request):
+    '''Cached View Object'''
     source = context.model.source
     allowed = set(source['principals_allowed']['view'])
     if allowed.isdisjoint(request.effective_principals):
@@ -31,6 +36,7 @@ def cached_view_object(context, request):
 
 @view_config(context=ICachedItem, request_method='GET', name='audit')
 def cached_view_audit(context, request):
+    '''Cached View Audit'''
     source = context.model.source
     allowed = set(source['principals_allowed']['audit'])
     if allowed.isdisjoint(request.effective_principals):
@@ -43,6 +49,7 @@ def cached_view_audit(context, request):
 
 @view_config(context=ICachedItem, request_method='GET', name='audit-self')
 def cached_view_audit_self(context, request):
+    '''Cached View Audit Self'''
     source = context.model.source
     allowed = set(source['principals_allowed']['audit'])
     if allowed.isdisjoint(request.effective_principals):
