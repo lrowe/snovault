@@ -1,55 +1,45 @@
-from snovault import DBSESSION
+'''Multiprocessing Indexer'''
+import atexit
+import logging
+import time
+
 from contextlib import contextmanager
 from multiprocessing import get_context
 from multiprocessing.pool import Pool
+
+import transaction
+
 from pyramid.decorator import reify
 from pyramid.request import apply_request_extensions
 from pyramid.threadlocal import (
     get_current_request,
     manager,
 )
-import atexit
-import logging
-import time
-import transaction
-from .indexer import (
-    INDEXER,
-    Indexer,
-)
-from .interfaces import APP_FACTORY
 
-log = logging.getLogger(__name__)
+from snovault import DBSESSION
+
+from . import INDEXER
+from .primary import PrimaryIndexer
 
 
-def includeme(config):
-    if config.registry.settings.get('indexer_worker'):
-        return
-    processes = config.registry.settings.get('indexer.processes')
-    try:
-        processes = int(processes)
-    except:
-        processes = None
-    config.registry[INDEXER] = MPIndexer(config.registry, processes=processes)
-
-
-# Running in subprocess
-
-current_xmin_snapshot_id = None
-app = None
+log = logging.getLogger(__name__)  # pylint: disable=invalid-name
+current_xmin_snapshot_id = None  # pylint: disable=invalid-name
+app = None  # pylint: disable=invalid-name
 
 
 def initializer(app_factory, settings):
+    '''Pool Function'''
     import signal
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-
-    global app
+    global app  # pylint: disable=global-statement, invalid-name
     atexit.register(clear_snapshot)
     app = app_factory(settings, indexer_worker=True, create_tables=False)
     signal.signal(signal.SIGALRM, clear_snapshot)
 
 
 def set_snapshot(xmin, snapshot_id):
-    global current_xmin_snapshot_id
+    '''Pool Function'''
+    global current_xmin_snapshot_id  # pylint: disable=global-statement, invalid-name
     if current_xmin_snapshot_id == (xmin, snapshot_id):
         return
     clear_snapshot()
@@ -77,12 +67,14 @@ def set_snapshot(xmin, snapshot_id):
     apply_request_extensions(request)
     request.invoke_subrequest = app.invoke_subrequest
     request.root = app.root_factory(request)
-    request._stats = {}
+    request._stats = {}  # pylint: disable=protected-access
     manager.push({'request': request, 'registry': registry})
 
 
 def clear_snapshot(signum=None, frame=None):
-    global current_xmin_snapshot_id
+    '''Pool Function'''
+    # pylint: disable=unused-argument
+    global current_xmin_snapshot_id  # pylint: disable=global-statement, invalid-name
     if current_xmin_snapshot_id is None:
         return
     transaction.abort()
@@ -92,6 +84,7 @@ def clear_snapshot(signum=None, frame=None):
 
 @contextmanager
 def snapshot(xmin, snapshot_id):
+    '''Pool Function'''
     import signal
     signal.alarm(0)
     set_snapshot(xmin, snapshot_id)
@@ -100,6 +93,7 @@ def snapshot(xmin, snapshot_id):
 
 
 def update_object_in_snapshot(args):
+    '''Pool Function'''
     uuid, xmin, snapshot_id, restart = args
     with snapshot(xmin, snapshot_id):
         request = get_current_request()
@@ -107,19 +101,23 @@ def update_object_in_snapshot(args):
         return indexer.update_object(request, uuid, xmin, restart)
 
 
-# Running in main process
-
-class MPIndexer(Indexer):
-    maxtasks = 1  # pooled processes will exit and be replaced after this many tasks are completed.
-
-    def __init__(self, registry, processes=None):
-        super(MPIndexer, self).__init__(registry)
-        self.processes = processes
-        self.chunksize = int(registry.settings.get('indexer.chunk_size',1024))  # in production.ini (via buildout.cfg) as 1024
-        self.initargs = (registry[APP_FACTORY], registry.settings,)
+class MPIndexer(PrimaryIndexer):
+    '''Multi Processing Indexer'''
+    #   Pooled processes will exit and be replaced after this
+    # many tasks are completed.
+    maxtasks = 1
+    def __init__(self, es_inst, es_index, **kwargs):
+        super(MPIndexer, self).__init__(es_inst, es_index)
+        self.processes = kwargs['processes']
+        self.chunksize = kwargs['chunksize']
+        self.initargs = (
+            kwargs['app_factory'],
+            kwargs['registry_settings'],
+        )
 
     @reify
     def pool(self):
+        '''Multiproceessing Pool'''
         return Pool(
             processes=self.processes,
             initializer=initializer,
@@ -128,21 +126,27 @@ class MPIndexer(Indexer):
             context=get_context('forkserver'),
         )
 
-    def update_objects(self, request, uuids, xmin, snapshot_id, restart):
-        # Ensure that we iterate over uuids in this thread not the pool task handler.
-        uuid_count = len(uuids)
-        workers = 1
-        if self.processes is not None and self.processes > 0:
-            workers = self.processes
-        chunkiness = int((uuid_count - 1) / workers) + 1
+    def update_objects(
+            self,
+            request,
+            uuids,
+            xmin,
+            snapshot_id=None,
+            restart=False
+        ):
+        '''Indexes uuids'''
+        # pylint: disable=too-many-arguments, unused-argument
+        chunkiness = ((len(uuids) - 1) // self.processes) + 1
         if chunkiness > self.chunksize:
             chunkiness = self.chunksize
-
         tasks = [(uuid, xmin, snapshot_id, restart) for uuid in uuids]
         errors = []
         try:
-            for i, error in enumerate(self.pool.imap_unordered(
-                    update_object_in_snapshot, tasks, chunkiness)):
+            for i, error in enumerate(
+                    self.pool.imap_unordered(
+                        update_object_in_snapshot, tasks, chunkiness
+                    )
+                ):
                 if error is not None:
                     errors.append(error)
                 if (i + 1) % 50 == 0:
@@ -153,6 +157,7 @@ class MPIndexer(Indexer):
         return errors
 
     def shutdown(self):
+        '''Mulitprocess Shutdown Function'''
         if 'pool' in self.__dict__:
             self.pool.terminate()
             self.pool.join()
