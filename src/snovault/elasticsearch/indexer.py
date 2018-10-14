@@ -8,6 +8,7 @@ import pytz
 
 from elasticsearch.exceptions import ConflictError as ESConflictError
 from pyramid.view import view_config
+from pyramid.settings import asbool
 
 from snovault import DBSESSION
 from snovault.storage import TransactionRecord
@@ -22,6 +23,7 @@ from .interfaces import (
     INDEXER
 )
 from .primary_indexer import PrimaryIndexer
+from .mpindexer import MPIndexer
 
 
 log = logging.getLogger(__name__)  # pylint: disable=invalid-name
@@ -34,7 +36,30 @@ def includeme(config):
     '''Initialize ES Indexers'''
     config.add_route('index', '/index')
     config.scan(__name__)
-    config.registry[INDEXER] = PrimaryIndexer(config.registry)
+    is_indexer = asbool(
+        config.registry.settings.get(INDEXER, False)
+    )
+    processes = get_processes(config.registry)
+    if is_indexer and not config.registry.get(INDEXER):
+        if processes == 1:
+            log.info('Initialized Single %s', INDEXER)
+            config.registry[INDEXER] = PrimaryIndexer(config.registry)
+        else:
+            log.info('Initialized Multi %s', INDEXER)
+            config.registry[INDEXER] = MPIndexer(
+                config.registry,
+                processes=processes
+            )
+
+
+def get_processes(registry):
+    '''Get indexer processes as integer'''
+    processes = registry.settings.get('indexer.processes')
+    try:
+        processes = int(processes)
+    except [TypeError, ValueError]:
+        processes = None
+    return processes
 
 
 def _run_index(index_listener, indexer_state, result, restart, snapshot_id):

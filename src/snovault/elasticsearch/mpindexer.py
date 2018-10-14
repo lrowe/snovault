@@ -34,18 +34,6 @@ app = None  # pylint: disable=invalid-name
 current_xmin_snapshot_id = None  # pylint: disable=invalid-name
 
 
-def includeme(config):
-    '''Initialize Multi processing ES Indexers'''
-    if config.registry.settings.get('indexer_worker'):
-        return
-    processes = int(config.registry.settings.get('indexer.processes'))
-    if processes > 1:
-        config.registry[INDEXER] = MPIndexer(
-            config.registry,
-            processes=processes
-        )
-
-
 def initializer(app_factory, settings):
     '''Multi Process Function'''
     import signal
