@@ -4,6 +4,7 @@ import logging
 import copy
 import itertools
 import sys
+import time
 
 import pytz
 
@@ -25,16 +26,27 @@ from .interfaces import (
     ELASTIC_SEARCH,
     INDEXER
 )
+from .uuid_queue import (
+    UuidQueue,
+    UuidQueueTypes,
+    UuidQueueWorker,
+)
+
 
 log = logging.getLogger('snovault.elasticsearch.es_index_listener')  # pylint: disable=invalid-name
 MAX_CLAUSES_FOR_ES = 8192
 SHORT_INDEXING = None  # Falsey value will turn off short
 PY2 = sys.version_info.major == 2
+QUEUE_NAME = 'indexQ'
+QUEUE_TYPE = UuidQueueTypes.REDIS_LIST_PIPE
+BATCH_GET_SIZE = 1
 
 
 def includeme(config):
     '''Initialize ES Indexers'''
+    config.registry['DEBUG_RESET_QUEUE'] = True
     config.add_route('index', '/index')
+    config.add_route('index_worker', '/index_worker')
     config.scan(__name__)
     is_indexer = asbool(
         config.registry.settings.get(INDEXER, False)
@@ -62,34 +74,6 @@ def get_processes(registry):
     return processes
 
 
-def _run_index(index_listener, indexer_state, result, restart, snapshot_id):
-    '''
-    Helper for index view_config function
-    Runs the indexing processes for index listener
-    '''
-    if indexer_state.followups:
-        indexer_state.prep_for_followup(
-            index_listener.xmin,
-            index_listener.uuid_store.uuids
-        )
-    indexer = index_listener.request.registry[INDEXER]
-    indexer.set_state(
-        indexer_state.is_initial_indexing,
-        indexer_state.is_reindexing,
-    )
-    result = indexer_state.start_cycle(index_listener.uuid_store.uuids, result)
-    uuids_list = list(index_listener.uuid_store.uuids)
-    errors = index_listener.request.registry[INDEXER].update_objects(
-        index_listener.request,
-        uuids_list,
-        index_listener.xmin,
-        snapshot_id,
-        restart
-    )
-    result = indexer_state.finish_cycle(result, errors)
-    indexer.clear_state()
-    if errors:
-        result['errors'] = errors
 
 
 def _do_record(index_listener, result):
@@ -186,6 +170,45 @@ def get_related_uuids(request, registry_es, updated, renamed):
         return (set(all_uuids(request.registry)), True)
     related_set = {hit['_id'] for hit in res['hits']['hits']}
     return (related_set, False)
+
+
+@view_config(route_name='index_worker', request_method='POST', permission="index")
+def index_worker(request):
+    '''Run Worker, server must be started'''
+    skip_consume = 0
+    client_options = {
+        'host': request.registry.settings['redis_ip'],
+        'port': request.registry.settings['redis_port'],
+    }
+    uuid_queue = UuidQueueWorker(
+        QUEUE_NAME,
+        QUEUE_TYPE,
+        client_options,
+    )
+    if uuid_queue.server_ready():
+        if uuid_queue.queue_running():
+            print('index worker uuid_queue.queue_running looping')
+            processed = 0
+            while uuid_queue.queue_running():
+                batch_id, uuids, _ = uuid_queue.get_uuids(
+                    get_count=BATCH_GET_SIZE
+                )
+                if batch_id and uuids:
+                    if skip_consume > 0:
+                        skip_consume -= 1
+                    else:
+                        errors = request.registry[INDEXER].update_objects(
+                            request,
+                            uuids,
+                            uuid_queue.xmin,
+                            is_reindex=False,
+                        )
+                        successes = len(uuids) - len(errors)
+                        processed += successes
+                        uuid_queue.add_finished(batch_id, successes, errors)
+                time.sleep(0.05)
+            print('run_worker done', processed)
+    return {}
 
 
 class UuidStore(object):
@@ -330,6 +353,7 @@ class IndexListener(object):
 @view_config(route_name='index', request_method='POST', permission="index")
 def index(request):
     '''Index listener for main indexer'''
+    # pylint: disable=too-many-branches, too-many-locals
     request.datastore = 'database'
     followups = list(
         request.registry.settings.get(
@@ -355,6 +379,20 @@ def index(request):
             last_xmin=last_xmin,
         )
         index_listener.xmin = tmp_xmin
+    client_options = {
+        'host': request.registry.settings['redis_ip'],
+        'port': request.registry.settings['redis_port'],
+    }
+    uuid_queue = UuidQueue(
+        QUEUE_NAME,
+        QUEUE_TYPE,
+        client_options,
+    )
+    if asbool(request.registry['DEBUG_RESET_QUEUE']):
+        print('purging')
+        uuid_queue.purge()
+        request.registry['DEBUG_RESET_QUEUE'] = False
+        return result
     flush = False
     if index_listener.uuid_store.over_threshold(SEARCH_MAX):
         flush = True
@@ -368,6 +406,7 @@ def index(request):
         tmp_flush, txn_count = index_listener.get_txns_and_update(last_xmin, result)
         if txn_count == 0 and index_listener.uuid_store.is_empty():
             indexer_state.send_notices()
+            uuid_queue.purge()
             return result
         if tmp_flush:
             flush = tmp_flush
@@ -375,16 +414,12 @@ def index(request):
             request.json.get('recovery', False),
             snapshot_id
         )
-    if not index_listener.uuid_store.is_empty() and not index_listener.dry_run:
-        if SHORT_INDEXING:
-            # If value is truthly then uuids will be limited.
-            log.warning(
-                'Shorting UUIDS from %d to %d',
-                len(index_listener.uuid_store.uuids),
-                SHORT_INDEXING,
-            )
-            index_listener.short_uuids(SHORT_INDEXING)
-        _run_index(index_listener, indexer_state, result, restart, snapshot_id)
+    if index_listener.uuid_store.is_empty():
+        uuid_queue.purge()
+    elif not index_listener.dry_run:
+
+        _run_index(index_listener, indexer_state, uuid_queue, result, restart, snapshot_id)
+
         if request.json.get('record', False):
             _do_record(index_listener, result)
         index_listener.registry_es.indices.refresh('_all')
@@ -397,3 +432,109 @@ def index(request):
         result['txn_lag'] = str(datetime.datetime.now(pytz.utc) - first_txn)
     indexer_state.send_notices()
     return result
+
+
+def _run_index(index_listener, indexer_state, uuid_queue, result, restart, snapshot_id):
+    '''
+    Helper for index view_config function
+    Runs the indexing processes for index listener
+    '''
+    # pylint: disable=too-many-arguments
+    if indexer_state.followups:
+        indexer_state.prep_for_followup(
+            index_listener.xmin,
+            index_listener.uuid_store.uuids
+        )
+    uuid_queue_run_args = {
+        'batch_by': BATCH_GET_SIZE,
+        'uuid_len': 36,
+        'xmin': index_listener.xmin,
+        'snapshot_id': snapshot_id,
+        'restart': restart,
+    }
+    listener_restarted = False
+    did_fail = True
+    indexer = index_listener.request.registry[INDEXER]
+    uuids_list = list(index_listener.uuid_store.uuids)
+    if uuid_queue.queue_running():
+        print('indexer uuid_queue.queue_running')
+        listener_restarted = True
+        did_fail = False
+    else:
+        if SHORT_INDEXING:
+            # If value is truthly then uuids will be limited.
+            log.warning(
+                'Shorting UUIDS from %d to %d',
+                len(index_listener.uuid_store.uuids),
+                SHORT_INDEXING,
+            )
+            index_listener.short_uuids(SHORT_INDEXING)
+        result, did_fail = init_cycle(
+            uuid_queue,
+            indexer,
+            uuids_list,
+            indexer_state,
+            result,
+            uuid_queue_run_args,
+        )
+    if did_fail:
+        log.warning(
+            'Index initalization failed for %d uuids.',
+            len(uuids_list)
+        )
+    else:
+        errors = server_loop(
+            uuid_queue,
+            uuid_queue_run_args,
+            listener_restarted=listener_restarted
+        )
+        result = indexer_state.finish_cycle(result, errors)
+        indexer.clear_state()
+        if errors:
+            result['errors'] = errors
+
+
+def init_cycle(uuid_queue, indexer, uuids_list, indexer_state, result, run_args):
+    # pylint: disable=too-many-arguments
+    '''Starts an index cycle'''
+    did_pass = uuid_queue.initialize(run_args)
+    did_fail = True
+    if did_pass:
+        did_fail = False
+        failed, success_cnt, call_cnt = uuid_queue.load_uuids(uuids_list)
+        print('indexer init_cycle load_uuids', failed, success_cnt, call_cnt)
+        if not success_cnt:
+            did_fail = True
+        else:
+            indexer.set_state(
+                indexer_state.is_initial_indexing,
+                indexer_state.is_reindexing,
+            )
+            result = indexer_state.start_cycle(uuids_list, result)
+    return result, did_fail
+
+
+def server_loop(uuid_queue, run_args, listener_restarted=False):
+    '''wait for workers to finish loop'''
+    max_age_secs = 7200
+    queue_done = False
+    errors = None
+    print('server looping')
+    while not queue_done:
+        readd_uuids, queue_done = uuid_queue.is_finished(
+            max_age_secs=max_age_secs, listener_restarted=listener_restarted,
+        )
+        if readd_uuids:
+            if listener_restarted:
+                if not uuid_queue.initialize(run_args):
+                    print('restart issue, not solved')
+            uuid_queue.load_uuids(
+                readd_uuids,
+                readded=True,
+            )
+        if queue_done:
+            errors, _ = uuid_queue.get_errors()
+        time.sleep(1.00)
+    print('done, try readding errors?', len(errors))
+    uuid_queue.stop()
+    return errors
