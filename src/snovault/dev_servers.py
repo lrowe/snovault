@@ -66,22 +66,29 @@ def main():
     # Loading app will have configured from config file. Reconfigure here:
     logging.getLogger('snovault').setLevel(logging.INFO)
 
-    from snovault.tests import elasticsearch_fixture, postgresql_fixture
+    from snovault.tests import (
+        elasticsearch_fixture,
+        redis_fixture,
+        postgresql_fixture,
+    )
     from snovault.elasticsearch import create_mapping
     datadir = os.path.abspath(args.datadir)
     pgdata = os.path.join(datadir, 'pgdata')
+    redisdata = os.path.join(datadir, 'redisdata')
     esdata = os.path.join(datadir, 'esdata')
     if args.clear:
-        for dirname in [pgdata, esdata]:
+        for dirname in [pgdata, esdata, redisdata]:
             if os.path.exists(dirname):
                 shutil.rmtree(dirname)
     if args.init:
         postgresql_fixture.initdb(pgdata, echo=True)
-
     postgres = postgresql_fixture.server_process(pgdata, echo=True)
+    redis_config_path = redis_fixture.initdb(redisdata, echo=True)
+    redis = redis_fixture.server_process(redis_config_path, echo=True)
     elasticsearch = elasticsearch_fixture.server_process(esdata, echo=True)
     nginx = nginx_server_process(echo=True)
-    processes = [postgres, elasticsearch, nginx]
+
+    processes = [postgres, redis, elasticsearch, nginx]
 
     print_processes = []
 
