@@ -69,11 +69,9 @@ def get_processes(registry):
     processes = registry.settings.get('indexer.processes')
     try:
         processes = int(processes)
-    except [TypeError, ValueError]:
+    except (TypeError, ValueError):
         processes = None
     return processes
-
-
 
 
 def _do_record(index_listener, result):
