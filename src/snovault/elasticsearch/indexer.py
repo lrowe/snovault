@@ -134,7 +134,7 @@ def get_related_uuids(request, registry_es, updated, renamed):
     updated_count = len(updated)
     renamed_count = len(renamed)
     if (updated_count + renamed_count) > MAX_CLAUSES_FOR_ES:
-        return (set(all_uuids(request.registry)), True)
+        return (list(all_uuids(request.registry)), True)
     elif (updated_count + renamed_count) == 0:
         return (set(), False)
     registry_es.indices.refresh('_all')
@@ -165,7 +165,7 @@ def get_related_uuids(request, registry_es, updated, renamed):
         }
     )
     if res['hits']['total'] > SEARCH_MAX:
-        return (set(all_uuids(request.registry)), True)
+        return (list(all_uuids(request.registry)), True)
     related_set = {hit['_id'] for hit in res['hits']['hits']}
     return (related_set, False)
 
@@ -453,7 +453,7 @@ def _run_index(index_listener, indexer_state, uuid_queue, result, restart, snaps
     listener_restarted = False
     did_fail = True
     indexer = index_listener.request.registry[INDEXER]
-    uuids_list = list(index_listener.uuid_store.uuids)
+    uuids = index_listener.uuid_store.uuids
     if uuid_queue.queue_running():
         print('indexer uuid_queue.queue_running')
         listener_restarted = True
@@ -470,7 +470,7 @@ def _run_index(index_listener, indexer_state, uuid_queue, result, restart, snaps
         result, did_fail = init_cycle(
             uuid_queue,
             indexer,
-            uuids_list,
+            uuids,
             indexer_state,
             result,
             uuid_queue_run_args,
@@ -478,7 +478,7 @@ def _run_index(index_listener, indexer_state, uuid_queue, result, restart, snaps
     if did_fail:
         log.warning(
             'Index initalization failed for %d uuids.',
-            len(uuids_list)
+            len(uuids)
         )
     else:
         errors = server_loop(
@@ -492,14 +492,14 @@ def _run_index(index_listener, indexer_state, uuid_queue, result, restart, snaps
             result['errors'] = errors
 
 
-def init_cycle(uuid_queue, indexer, uuids_list, indexer_state, result, run_args):
+def init_cycle(uuid_queue, indexer, uuids, indexer_state, result, run_args):
     # pylint: disable=too-many-arguments
     '''Starts an index cycle'''
     did_pass = uuid_queue.initialize(run_args)
     did_fail = True
     if did_pass:
         did_fail = False
-        failed, success_cnt, call_cnt = uuid_queue.load_uuids(uuids_list)
+        failed, success_cnt, call_cnt = uuid_queue.load_uuids(uuids)
         print('indexer init_cycle load_uuids', failed, success_cnt, call_cnt)
         if not success_cnt:
             did_fail = True
@@ -508,7 +508,7 @@ def init_cycle(uuid_queue, indexer, uuids_list, indexer_state, result, run_args)
                 indexer_state.is_initial_indexing,
                 indexer_state.is_reindexing,
             )
-            result = indexer_state.start_cycle(uuids_list, result)
+            result = indexer_state.start_cycle(uuids, result)
     return result, did_fail
 
 
