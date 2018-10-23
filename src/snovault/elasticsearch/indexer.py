@@ -51,8 +51,11 @@ def includeme(config):
     is_indexer = asbool(
         config.registry.settings.get(INDEXER, False)
     )
+    is_index_worker = asbool(
+        config.registry.settings.get('index_worker', False)
+    )
     processes = get_processes(config.registry)
-    if is_indexer and not config.registry.get(INDEXER):
+    if (is_indexer or is_index_worker) and not config.registry.get(INDEXER):
         if processes == 1 or PY2:
             log.info('Initialized Single %s', INDEXER)
             config.registry[INDEXER] = PrimaryIndexer(config.registry)
