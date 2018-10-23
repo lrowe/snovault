@@ -39,7 +39,7 @@ SHORT_INDEXING = None  # Falsey value will turn off short
 PY2 = sys.version_info.major == 2
 QUEUE_NAME = 'indexQ'
 QUEUE_TYPE = UuidQueueTypes.REDIS_LIST_PIPE
-BATCH_GET_SIZE = 1
+BATCH_GET_SIZE = 100
 
 
 def includeme(config):
