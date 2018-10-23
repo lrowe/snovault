@@ -212,8 +212,8 @@ def index_worker(request):
                         uuid_queue.add_finished(
                             batch_id,
                             successes,
-                            errors
-                            logs=indexer.log_store,
+                            errors,
+                            batch_logs=indexer.log_store,
                         )
                 time.sleep(0.05)
             print('run_worker done', processed)
