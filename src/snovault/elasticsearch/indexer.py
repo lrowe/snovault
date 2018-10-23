@@ -177,22 +177,40 @@ def get_related_uuids(request, registry_es, updated, renamed):
 def index_worker(request):
     '''Run Worker, server must be started'''
     skip_consume = 0
+    uuid_queue_worker = _get_uuid_queue_worker(request)
+    _run_uuid_queue_worker(uuid_queue_worker, request, skip_consume)
+    return {}
+
+
+def _get_uuid_queue_worker(request):
     client_options = {
         'host': request.registry.settings['redis_ip'],
         'port': request.registry.settings['redis_port'],
     }
-    uuid_queue = UuidQueueWorker(
+    uuid_queue_worker = UuidQueueWorker(
         QUEUE_NAME,
         QUEUE_TYPE,
         client_options,
     )
+    return uuid_queue_worker
+
+
+def _run_uuid_queue_worker(
+        uuid_queue_worker,
+        request,
+        skip_consume,
+        uuid_queue_server=None,
+        max_age_secs=7200,
+        listener_restarted=False,
+    ):
+    '''index_worker helper that can be used from index listener too'''
     indexer = request.registry[INDEXER]
-    if uuid_queue.server_ready():
-        if uuid_queue.queue_running():
+    if uuid_queue_worker.server_ready():
+        if uuid_queue_worker.queue_running():
             print('index worker uuid_queue.queue_running looping')
             processed = 0
-            while uuid_queue.queue_running():
-                batch_id, uuids, _ = uuid_queue.get_uuids(
+            while uuid_queue_worker.queue_running():
+                batch_id, uuids, _ = uuid_queue_worker.get_uuids(
                     get_count=BATCH_GET_SIZE
                 )
                 if batch_id and uuids:
@@ -203,12 +221,12 @@ def index_worker(request):
                         errors = indexer.update_objects(
                             request,
                             uuids,
-                            uuid_queue.xmin,
+                            uuid_queue_worker.xmin,
                             is_reindex=False,
                         )
                         successes = len(uuids) - len(errors)
                         processed += successes
-                        uuid_queue.add_finished(
+                        uuid_queue_worker.add_finished(
                             batch_id,
                             successes,
                             errors,
@@ -216,9 +234,15 @@ def index_worker(request):
                         )
                         indexer.log_store = []
                 time.sleep(0.05)
+                if uuid_queue_server:
+                    return uuid_queue_server.is_finished(
+                        max_age_secs=max_age_secs,
+                        listener_restarted=listener_restarted,
+                    )
             print('run_worker done', processed)
-    return {}
-
+    # return values for uuid_queue_server
+    # not used in real worker
+    return [], False
 
 class UuidStore(object):
     '''
@@ -426,8 +450,17 @@ def index(request):
     if index_listener.uuid_store.is_empty():
         uuid_queue.purge()
     elif not index_listener.dry_run:
-
-        _run_index(index_listener, indexer_state, uuid_queue, result, restart, snapshot_id)
+        has_server_worker = False
+        _run_index(
+            index_listener,
+            indexer_state,
+            uuid_queue,
+            result,
+            restart,
+            snapshot_id,
+            request,
+            has_server_worker=has_server_worker,
+        )
 
         if request.json.get('record', False):
             _do_record(index_listener, result)
@@ -443,7 +476,16 @@ def index(request):
     return result
 
 
-def _run_index(index_listener, indexer_state, uuid_queue, result, restart, snapshot_id):
+def _run_index(
+        index_listener,
+        indexer_state,
+        uuid_queue,
+        result,
+        restart,
+        snapshot_id,
+        request,
+        has_server_worker=False
+    ):
     '''
     Helper for index view_config function
     Runs the indexing processes for index listener
@@ -495,7 +537,9 @@ def _run_index(index_listener, indexer_state, uuid_queue, result, restart, snaps
         errors = server_loop(
             uuid_queue,
             uuid_queue_run_args,
-            listener_restarted=listener_restarted
+            request,
+            listener_restarted=listener_restarted,
+            has_server_worker=has_server_worker,
         )
         result = indexer_state.finish_cycle(result, errors)
         indexer.clear_state()
@@ -523,16 +567,36 @@ def init_cycle(uuid_queue, indexer, uuids, indexer_state, result, run_args):
     return result, did_fail
 
 
-def server_loop(uuid_queue, run_args, listener_restarted=False):
+def server_loop(
+        uuid_queue,
+        run_args,
+        request,
+        listener_restarted=False,
+        has_server_worker=False,
+    ):
     '''wait for workers to finish loop'''
+    skip_consume = 0
     max_age_secs = 7200
     queue_done = False
     errors = None
+    uuid_queue_worker = None
+    if has_server_worker:
+        uuid_queue_worker = _get_uuid_queue_worker(request)
     print('server looping')
     while not queue_done:
-        readd_uuids, queue_done = uuid_queue.is_finished(
-            max_age_secs=max_age_secs, listener_restarted=listener_restarted,
-        )
+        if uuid_queue_worker:
+            readd_uuids, queue_done = _run_uuid_queue_worker(
+                uuid_queue_worker,
+                request,
+                skip_consume,
+                uuid_queue_server=uuid_queue,
+                max_age_secs=max_age_secs,
+                listener_restarted=listener_restarted,
+            )
+        else:
+            readd_uuids, queue_done = uuid_queue.is_finished(
+                max_age_secs=max_age_secs, listener_restarted=listener_restarted,
+            )
         if readd_uuids:
             if listener_restarted:
                 if not uuid_queue.initialize(run_args):
