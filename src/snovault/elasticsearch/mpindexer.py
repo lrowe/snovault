@@ -142,7 +142,15 @@ class MPIndexer(PrimaryIndexer):
             context=get_context('forkserver'),
         )
 
-    def update_objects(self, request, uuids, xmin, snapshot_id=None, restart=False):
+    def update_objects(
+            self,
+            request,
+            uuids,
+            xmin,
+            snapshot_id=None,
+            restart=False,
+            is_reindex=False,
+        ):
         '''Overide udpate objects'''
         # pylint: disable=too-many-arguments
         chunkiness = 1 + ((len(uuids) - 1)//self.processes)

@@ -215,7 +215,8 @@ class PrimaryIndexer(object):
             uuids,
             xmin,
             snapshot_id=None,
-            restart=False
+            restart=False,
+            is_reindex=False,
         ):
         '''Wapper to iterate over update_object'''
         # pylint: disable=too-many-arguments, unused-argument
