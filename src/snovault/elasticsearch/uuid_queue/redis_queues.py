@@ -142,7 +142,7 @@ class RedisQueueMeta(UuidBaseQueueMeta):
     def store_logs(self, batch_logs, batch_id, successes, errors):
         '''Stores indexer batch_logs with batch info'''
         session_tag = self._client.get(self._key_session_tag)
-        log_key = 'log:' + session_tag
+        log_key = 'log:' + session_tag + ':' + batch_id
         for log_str in batch_logs:
             self._client.lpush(log_key, log_str)
 
