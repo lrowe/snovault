@@ -55,8 +55,8 @@ def configure_engine(settings):
     engine_url = settings['sqlalchemy.url']
     engine_opts = {}
     if engine_url.startswith('postgresql'):
-        if settings.get('indexer_worker'):
-            application_name = 'indexer_worker'
+        if settings.get('index_worker'):
+            application_name = 'index_worker'
         elif settings.get('indexer'):
             application_name = 'indexer'
         else:
