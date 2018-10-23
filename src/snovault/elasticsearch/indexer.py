@@ -205,6 +205,9 @@ def _run_uuid_queue_worker(
     ):
     '''index_worker helper that can be used from index listener too'''
     indexer = request.registry[INDEXER]
+    log_tag = 'wrk'
+    if uuid_queue_server:
+        log_tag = 'srv'
     if uuid_queue_worker.server_ready():
         if uuid_queue_worker.queue_running():
             print('index worker uuid_queue.queue_running looping')
@@ -223,6 +226,7 @@ def _run_uuid_queue_worker(
                             uuids,
                             uuid_queue_worker.xmin,
                             is_reindex=False,
+                            log_tag=log_tag,
                         )
                         successes = len(uuids) - len(errors)
                         processed += successes

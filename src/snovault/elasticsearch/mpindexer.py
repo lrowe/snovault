@@ -150,6 +150,7 @@ class MPIndexer(PrimaryIndexer):
             snapshot_id=None,
             restart=False,
             is_reindex=False,
+            log_tag='',
         ):
         '''Overide udpate objects'''
         # pylint: disable=too-many-arguments
@@ -158,6 +159,7 @@ class MPIndexer(PrimaryIndexer):
             chunkiness = self.chunksize
         tasks = [(uuid, xmin, snapshot_id, restart) for uuid in uuids]
         errors = []
+        log_tag += '-mp'
         try:
             for index_item in self.pool.imap_unordered(
                     update_object_in_snapshot,
@@ -166,7 +168,7 @@ class MPIndexer(PrimaryIndexer):
                 ):
                 if index_item.error is not None:
                     errors.append(index_item.error)
-                self._log_index_item(index_item)
+                self._log_index_item(index_item, log_tag=log_tag)
         except:
             self.shutdown()
             raise

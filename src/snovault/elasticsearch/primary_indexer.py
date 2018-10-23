@@ -3,6 +3,8 @@ import datetime
 import logging
 import time
 
+from os import getpid as os_getpid
+
 from elasticsearch.exceptions import (
     ConflictError as ESConflictError,
     ConnectionError as ESConnectionError,
@@ -50,16 +52,18 @@ class IndexItem(object):
         else:
             self.error = error
 
-    def as_log_msg(self):
+    def as_log_msg(self, log_tag):
         '''Returns index info for uuid as a string message'''
         doc_path = None
         if self._embed_doc.get('paths'):
             doc_path = self._embed_doc.get('paths')[0]
         msg = (
-            '{uuid} {url} {total_time} '
+            '({log_tag}, {pid}) {uuid} {url} {total_time} '
             '{doc_path} {doc_type} {embedded} {linked} {embed_time} '
             '{es_time} {es_backoffs} {es_total_time} '
         ).format(
+            log_tag=log_tag,
+            pid=os_getpid(),
             url=self._embed_url,
             uuid=self._uuid,
             total_time='%0.6f' % self.total_time,
@@ -184,10 +188,10 @@ class PrimaryIndexer(object):
         )
         self.log_store = []
 
-    def _log_index_item(self, index_item):
+    def _log_index_item(self, index_item, log_tag=''):
         if not self._do_log:
             return
-        uuid_log = index_item.as_log_msg()
+        uuid_log = index_item.as_log_msg(log_tag=log_tag)
         self.log_store.append(uuid_log)
         do_console_log = False
         if not self._is_initial_indexing and not self._is_reindexing:
@@ -223,6 +227,7 @@ class PrimaryIndexer(object):
             snapshot_id=None,
             restart=False,
             is_reindex=False,
+            log_tag=''
         ):
         '''Wapper to iterate over update_object'''
         # pylint: disable=too-many-arguments, unused-argument
@@ -233,12 +238,12 @@ class PrimaryIndexer(object):
             index_item_dict = self.update_object(
                 request,
                 index_item_dict,
-                restart=restart
+                restart=restart,
             )
             index_item.update_from_dict(index_item_dict)
             if index_item.error is not None:
                 errors.append(index_item.error)
-            self._log_index_item(index_item)
+            self._log_index_item(index_item, log_tag=log_tag)
         return errors
 
     def update_object(self, request, index_item_dict, restart=False):

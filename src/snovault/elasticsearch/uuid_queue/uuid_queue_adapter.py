@@ -1,8 +1,6 @@
 """
 Adapater to connect public uuid queue functionality to a specific queue type
 """
-import copy
-
 from .aws_queues import AwsClient
 from .aws_queues import AWS_SQS
 
@@ -161,7 +159,12 @@ class UuidQueueWorker(object):
     def add_finished(self, batch_id, successes, errors, batch_logs=None):
         '''Update queue with consumed uuids'''
         if batch_logs:
-            self._queue.qmeta.store_logs(batch_logs, batch_id, successes, errors)
+            self._queue.qmeta.store_logs(
+                batch_logs,
+                batch_id,
+                successes,
+                errors,
+            )
         self._queue.qmeta.remove_batch(batch_id, successes, errors)
 
     def get_errors(self):
