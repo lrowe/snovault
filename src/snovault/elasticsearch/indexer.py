@@ -186,6 +186,7 @@ def index_worker(request):
         QUEUE_TYPE,
         client_options,
     )
+    indexer = request.registry[INDEXER]
     if uuid_queue.server_ready():
         if uuid_queue.queue_running():
             print('index worker uuid_queue.queue_running looping')
@@ -198,7 +199,8 @@ def index_worker(request):
                     if skip_consume > 0:
                         skip_consume -= 1
                     else:
-                        errors = request.registry[INDEXER].update_objects(
+                        indexer.log_store = []
+                        errors = indexer.update_objects(
                             request,
                             uuids,
                             uuid_queue.xmin,
@@ -206,7 +208,13 @@ def index_worker(request):
                         )
                         successes = len(uuids) - len(errors)
                         processed += successes
-                        uuid_queue.add_finished(batch_id, successes, errors)
+                        indexer.log_store = []
+                        uuid_queue.add_finished(
+                            batch_id,
+                            successes,
+                            errors
+                            logs=indexer.log_store,
+                        )
                 time.sleep(0.05)
             print('run_worker done', processed)
     return {}

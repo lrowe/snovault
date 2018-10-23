@@ -97,6 +97,10 @@ class UuidBaseQueueMeta(object):
                 did_finish = True
         return did_finish, err_msg
 
+    def store_logs(self, logs, batch_id, successes, errors):
+        '''Stores indexer logs with batch info'''
+        pass
+
     def get_errors(self):
         '''Get all errors from queue that were sent in remove_batch'''
         return self._errors

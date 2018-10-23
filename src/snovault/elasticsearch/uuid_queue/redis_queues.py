@@ -65,6 +65,7 @@ class RedisQueueMeta(UuidBaseQueueMeta):
         self._key_errors = self._key_metabase + ':be'
         self._key_errorscount = self._key_metabase + ':ce'
         self._key_isrunning = self._key_metabase + ':running'
+        self._key_session_tag = self._key_metabase + ':st'
 
     def set_args(self):
         '''Initial args'''
@@ -72,6 +73,7 @@ class RedisQueueMeta(UuidBaseQueueMeta):
         self._client.set(self._key_isrunning, 'true')
         self._client.set(self._key_errorscount, 0)
         self._client.set(self._key_successescount, 0)
+        self._client.set(self._key_session_tag, str(self._base_id))
 
     def _add_errors(self, errors):
         '''Add errors as batch after consumed'''
@@ -136,6 +138,13 @@ class RedisQueueMeta(UuidBaseQueueMeta):
         - Tells the workers to stop
         '''
         self._client.set(self._key_isrunning, 'false')
+
+    def store_logs(self, logs, batch_id, successes, errors):
+        '''Stores indexer logs with batch info'''
+        session_tag = self._client.get(self._key_session_tag)
+        log_key = 'log:' + session_tag
+        for log_str in logs:
+            self._client.lpush(log_key, log_str)
 
     def purge_meta(self):
         '''Remove all keys with queue_name:meta'''

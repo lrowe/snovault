@@ -182,22 +182,28 @@ class PrimaryIndexer(object):
                 False
             )
         )
+        self.log_store = []
 
     def _log_index_item(self, index_item):
         if not self._do_log:
             return
+        uuid_log = index_item.as_log_msg()
+        self.log_store.append(uuid_log)
+        do_console_log = False
         if not self._is_initial_indexing and not self._is_reindexing:
             # System Indexing
-            print(index_item.as_log_msg())
+            pass
         if self._is_initial_indexing and not self._is_reindexing:
             # Initial Indexing
-            print(index_item.as_log_msg())
+            do_console_log = True
         elif self._is_reindexing and not self._is_initial_indexing:
             # Partial Requested Reindex
-            print(index_item.as_log_msg())
+            do_console_log = True
         else:
             # Full Requested Reindex
-            print(index_item.as_log_msg())
+            do_console_log = True
+        if do_console_log:
+            log.info(uuid_log)
 
     def clear_state(self):
         '''Reset state after indexing'''
