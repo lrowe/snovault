@@ -36,44 +36,92 @@ from .uuid_queue import (
 log = logging.getLogger('snovault.elasticsearch.es_index_listener')  # pylint: disable=invalid-name
 MAX_CLAUSES_FOR_ES = 8192
 SHORT_INDEXING = None  # Falsey value will turn off short
+INDEX_SETTINGS = 'INDEX_SETTINGS'
+NON_REDIS_QUEUES = [
+    UuidQueueTypes.AWS_SQS,
+    UuidQueueTypes.BASE_IN_MEMORY,
+]
 PY2 = sys.version_info.major == 2
-QUEUE_NAME = 'indexQ'
-QUEUE_TYPE = UuidQueueTypes.REDIS_LIST_PIPE
-BATCH_GET_SIZE = 100
 
 
 def includeme(config):
     '''Initialize ES Indexers'''
-    config.registry['DEBUG_RESET_QUEUE'] = True
     config.add_route('index', '/index')
     config.add_route('index_worker', '/index_worker')
     config.scan(__name__)
-    is_indexer = asbool(
-        config.registry.settings.get(INDEXER, False)
-    )
-    is_index_worker = asbool(
-        config.registry.settings.get('index_worker', False)
-    )
-    processes = get_processes(config.registry)
-    if (is_indexer or is_index_worker) and not config.registry.get(INDEXER):
-        if processes == 1 or PY2:
-            log.info('Initialized Single %s', INDEXER)
-            config.registry[INDEXER] = PrimaryIndexer(config.registry)
-        else:
-            log.info('Initialized Multi %s', INDEXER)
-            config.registry[INDEXER] = MPIndexer(
-                config.registry,
-                processes=processes
-            )
+    indexer, indexer_settings = _get_indexer(config.registry)
+    if indexer:
+        config.registry[INDEXER] = indexer
+        config.registry[INDEX_SETTINGS] = indexer_settings
+    elif indexer_settings['is_server']:
+        config.registry[INDEX_SETTINGS] = indexer_settings
+    # TODO: Remove this?  It is only used on restart
+    config.registry['DEBUG_RESET_QUEUE'] = True
 
 
-def get_processes(registry):
-    '''Get indexer processes as integer'''
-    processes = registry.settings.get('indexer.processes')
+def _get_indexer(cnf_registry):
+    '''
+    Create indexer based on resigtry vars. includeme helper
+    - returns indexer instance and settings
+    - should only be called from includeme
+    '''
+    reg_settings = cnf_registry.settings
+    indexer = None
+    cnf_name = reg_settings.get('cnf_name')
+    is_indexer = asbool(reg_settings.get('indexer', False))
+    is_index_worker = asbool(reg_settings.get('index_worker', False))
+    index_do_log = asbool(reg_settings.get('index_do_log', False))
+    es_index = reg_settings['snovault.elasticsearch.index']
+    indexer_settings = {
+        'index': es_index,
+        'do_log': index_do_log,
+        'is_server': False,
+        'is_worker': False,
+    }
+    if is_indexer or is_index_worker:
+        indexer_settings['queue_name'] = reg_settings.get(
+            'index_queue_name',
+            'defaultindexQ'
+        )
+        index_queue_type = reg_settings.get(
+            'index_queue_type',
+            'BASE_IN_MEMORY'
+        )
+        indexer_settings['queue_type'] = index_queue_type
+        indexer_settings['is_server'] = is_indexer
+        indexer_settings['is_worker'] = False
+        indexer_settings['has_workers'] = False
+        indexer_settings['worker_procs'] = 0
+        indexer_settings['chunk_size'] = 1024
+        if index_queue_type not in NON_REDIS_QUEUES:
+            indexer_settings['redis_ip'] = reg_settings['redis_ip']
+            indexer_settings['redis_port'] = reg_settings['redis_port']
+        if is_index_worker:
+            # Worker index process or Main index process with internal workers
+            index_wrk_procs = _get_processes(reg_settings)
+            indexer_settings['worker_procs'] = index_wrk_procs
+            indexer_settings['has_workers'] = is_indexer
+            if not is_indexer:
+                indexer_settings['is_worker'] = True
+            if index_wrk_procs > 1 and not PY2:
+                log.info('Initialized Multi Index Worker: %s', INDEXER)
+                indexer_settings['chunk_size'] = 'indexer.chunk_size'
+                indexer = MPIndexer(cnf_registry, indexer_settings)
+            else:
+                log.info('Initialized Single Index Worker: %s', INDEXER)
+                indexer = PrimaryIndexer(cnf_registry, indexer_settings)
+    return indexer, indexer_settings
+
+
+def _get_processes(reg_settings):
+    '''
+    Get indexer processes as integer. includeme helper
+    '''
+    processes = reg_settings.get('index_wrk_procs', 1)
     try:
         processes = int(processes)
     except (TypeError, ValueError):
-        processes = None
+        processes = 1
     return processes
 
 
@@ -176,33 +224,52 @@ def get_related_uuids(request, registry_es, updated, renamed):
 @view_config(route_name='index_worker', request_method='POST', permission="index")
 def index_worker(request):
     '''Run Worker, server must be started'''
+    indexer_settings = request.registry.get(INDEX_SETTINGS)
+    indexer = request.registry.get(INDEXER)
+    if not indexer or not indexer_settings:
+        return {}
     skip_consume = 0
-    uuid_queue_worker = _get_uuid_queue_worker(request)
-    _run_uuid_queue_worker(uuid_queue_worker, request, skip_consume)
+    batch_size = indexer_settings['chunk_size']
+    uuid_queue_worker = _get_uuid_queue(indexer_settings, worker=True)
+    _run_uuid_queue_worker(
+        uuid_queue_worker,
+        request,
+        skip_consume,
+        batch_size
+    )
     return {}
 
 
-def _get_uuid_queue_worker(request):
-    client_options = {
-        'host': request.registry.settings['redis_ip'],
-        'port': request.registry.settings['redis_port'],
-    }
-    uuid_queue_worker = UuidQueueWorker(
-        QUEUE_NAME,
-        QUEUE_TYPE,
-        client_options,
-    )
-    return uuid_queue_worker
+def _get_uuid_queue(indexer_settings, worker=False):
+    client_options = {}
+    if indexer_settings['queue_type'] not in NON_REDIS_QUEUES:
+        client_options['host'] = indexer_settings['redis_ip']
+        client_options['port'] = indexer_settings['redis_port']
+    if worker:
+        uuid_queue = UuidQueueWorker(
+            indexer_settings['queue_name'],
+            indexer_settings['queue_type'],
+            client_options,
+        )
+    else:
+        uuid_queue = UuidQueue(
+            indexer_settings['queue_name'],
+            indexer_settings['queue_type'],
+            client_options,
+        )
+    return uuid_queue
 
 
 def _run_uuid_queue_worker(
         uuid_queue_worker,
         request,
         skip_consume,
+        get_batch_size,
         uuid_queue_server=None,
         max_age_secs=7200,
         listener_restarted=False,
     ):
+    # pylint: disable=too-many-arguments
     '''index_worker helper that can be used from index listener too'''
     indexer = request.registry[INDEXER]
     log_tag = 'wrk'
@@ -214,7 +281,7 @@ def _run_uuid_queue_worker(
             processed = 0
             while uuid_queue_worker.queue_running():
                 batch_id, uuids, _ = uuid_queue_worker.get_uuids(
-                    get_count=BATCH_GET_SIZE
+                    get_count=get_batch_size
                 )
                 if batch_id and uuids:
                     if skip_consume > 0:
@@ -247,6 +314,7 @@ def _run_uuid_queue_worker(
     # return values for uuid_queue_server
     # not used in real worker
     return [], False
+
 
 class UuidStore(object):
     '''
@@ -390,7 +458,10 @@ class IndexListener(object):
 @view_config(route_name='index', request_method='POST', permission="index")
 def index(request):
     '''Index listener for main indexer'''
-    # pylint: disable=too-many-branches, too-many-locals
+    # pylint: disable=too-many-branches, too-many-locals, too-many-statements
+    indexer_settings = request.registry.get(INDEX_SETTINGS)
+    if not indexer_settings or not indexer_settings['is_server']:
+        return {}
     request.datastore = 'database'
     followups = list(
         request.registry.settings.get(
@@ -416,15 +487,7 @@ def index(request):
             last_xmin=last_xmin,
         )
         index_listener.xmin = tmp_xmin
-    client_options = {
-        'host': request.registry.settings['redis_ip'],
-        'port': request.registry.settings['redis_port'],
-    }
-    uuid_queue = UuidQueue(
-        QUEUE_NAME,
-        QUEUE_TYPE,
-        client_options,
-    )
+    uuid_queue = _get_uuid_queue(indexer_settings)
     if asbool(request.registry['DEBUG_RESET_QUEUE']):
         print('purging')
         uuid_queue.purge()
@@ -454,7 +517,6 @@ def index(request):
     if index_listener.uuid_store.is_empty():
         uuid_queue.purge()
     elif not index_listener.dry_run:
-        has_server_worker = False
         _run_index(
             index_listener,
             indexer_state,
@@ -463,7 +525,7 @@ def index(request):
             restart,
             snapshot_id,
             request,
-            has_server_worker=has_server_worker,
+            indexer_settings,
         )
 
         if request.json.get('record', False):
@@ -488,7 +550,7 @@ def _run_index(
         restart,
         snapshot_id,
         request,
-        has_server_worker=False
+        indexer_settings,
     ):
     '''
     Helper for index view_config function
@@ -501,7 +563,7 @@ def _run_index(
             index_listener.uuid_store.uuids
         )
     uuid_queue_run_args = {
-        'batch_by': BATCH_GET_SIZE,
+        'batch_by': indexer_settings['chunk_size'],
         'uuid_len': 36,
         'xmin': index_listener.xmin,
         'snapshot_id': snapshot_id,
@@ -509,8 +571,11 @@ def _run_index(
     }
     listener_restarted = False
     did_fail = True
-    indexer = index_listener.request.registry[INDEXER]
     uuids = index_listener.uuid_store.uuids
+    uuid_queue_worker = None
+    indexer = index_listener.request.registry.get(INDEXER, None)
+    if indexer_settings['has_workers']:
+        uuid_queue_worker = _get_uuid_queue(indexer_settings)
     if uuid_queue.queue_running():
         print('indexer uuid_queue.queue_running')
         listener_restarted = True
@@ -526,11 +591,11 @@ def _run_index(
             index_listener.short_uuids(SHORT_INDEXING)
         result, did_fail = init_cycle(
             uuid_queue,
-            indexer,
             uuids,
             indexer_state,
             result,
             uuid_queue_run_args,
+            indexer=indexer,
         )
     if did_fail:
         log.warning(
@@ -542,16 +607,25 @@ def _run_index(
             uuid_queue,
             uuid_queue_run_args,
             request,
+            indexer_settings['chunk_size'],
             listener_restarted=listener_restarted,
-            has_server_worker=has_server_worker,
+            uuid_queue_worker=uuid_queue_worker,
         )
         result = indexer_state.finish_cycle(result, errors)
-        indexer.clear_state()
+        if indexer:
+            indexer.clear_state()
         if errors:
             result['errors'] = errors
 
 
-def init_cycle(uuid_queue, indexer, uuids, indexer_state, result, run_args):
+def init_cycle(
+        uuid_queue,
+        uuids,
+        indexer_state,
+        result,
+        run_args,
+        indexer=None
+    ):
     # pylint: disable=too-many-arguments
     '''Starts an index cycle'''
     did_pass = uuid_queue.initialize(run_args)
@@ -563,10 +637,11 @@ def init_cycle(uuid_queue, indexer, uuids, indexer_state, result, run_args):
         if not success_cnt:
             did_fail = True
         else:
-            indexer.set_state(
-                indexer_state.is_initial_indexing,
-                indexer_state.is_reindexing,
-            )
+            if indexer:
+                indexer.set_state(
+                    indexer_state.is_initial_indexing,
+                    indexer_state.is_reindexing,
+                )
             result = indexer_state.start_cycle(uuids, result)
     return result, did_fail
 
@@ -575,24 +650,26 @@ def server_loop(
         uuid_queue,
         run_args,
         request,
+        chunk_size,
         listener_restarted=False,
-        has_server_worker=False,
+        uuid_queue_worker=None,
     ):
+    # pylint: disable=too-many-arguments
     '''wait for workers to finish loop'''
     skip_consume = 0
     max_age_secs = 7200
     queue_done = False
     errors = None
-    uuid_queue_worker = None
-    if has_server_worker:
-        uuid_queue_worker = _get_uuid_queue_worker(request)
     print('server looping')
     while not queue_done:
         if uuid_queue_worker:
+            # This does not loop like the regular uuid queue worker
+            # Runs once if queue server passed in
             readd_uuids, queue_done = _run_uuid_queue_worker(
                 uuid_queue_worker,
                 request,
                 skip_consume,
+                chunk_size,
                 uuid_queue_server=uuid_queue,
                 max_age_secs=max_age_secs,
                 listener_restarted=listener_restarted,

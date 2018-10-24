@@ -124,11 +124,11 @@ class MPIndexer(PrimaryIndexer):
     # many tasks are completed.
     maxtasks = 1
 
-    def __init__(self, registry, processes=None):
-        super(MPIndexer, self).__init__(registry)
-        self.processes = processes
+    def __init__(self, registry, settings):
+        super(MPIndexer, self).__init__(registry, settings,)
+        self.processes = settings.get('worker_procs')
         # in production.ini (via buildout.cfg) as 1024
-        self.chunksize = int(registry.settings.get('indexer.chunk_size', 1024))
+        self.chunksize = settings.get('chunk_size')
         self.initargs = (registry[APP_FACTORY], registry.settings,)
 
     @reify

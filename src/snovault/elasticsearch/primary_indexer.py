@@ -174,18 +174,13 @@ class IndexItem(object):
 class PrimaryIndexer(object):
     '''Primary Indexer'''
 
-    def __init__(self, registry):
+    def __init__(self, registry, settings):
         self.registry_es = registry[ELASTIC_SEARCH]
         self.esstorage = registry[STORAGE]
-        self.index = registry.settings['snovault.elasticsearch.index']
+        self.index = settings['index']
         self._is_initial_indexing = False
         self._is_reindexing = False
-        self._do_log = asbool(
-            registry.settings.get(
-                'index_do_log',
-                False
-            )
-        )
+        self._do_log = settings.get('do_log')
         self.log_store = []
 
     def _log_index_item(self, index_item, log_tag=''):
