@@ -37,6 +37,7 @@ log = logging.getLogger('snovault.elasticsearch.es_index_listener')  # pylint: d
 MAX_CLAUSES_FOR_ES = 8192
 SHORT_INDEXING = None  # Falsey value will turn off short
 INDEX_SETTINGS = 'INDEX_SETTINGS'
+BASE_MEMORY_QUEUE = 'BASE_IN_MEMORY'
 NON_REDIS_QUEUES = [
     UuidQueueTypes.AWS_SQS,
     UuidQueueTypes.BASE_IN_MEMORY,
@@ -73,6 +74,7 @@ def _get_indexer(cnf_registry):
     index_do_log = asbool(reg_settings.get('index_do_log', False))
     es_index = reg_settings['snovault.elasticsearch.index']
     indexer_settings = {
+        'cnf_name': cnf_name,
         'index': es_index,
         'do_log': index_do_log,
         'is_server': False,
@@ -85,21 +87,27 @@ def _get_indexer(cnf_registry):
         )
         index_queue_type = reg_settings.get(
             'index_queue_type',
-            'BASE_IN_MEMORY'
+            BASE_MEMORY_QUEUE
         )
+        index_wrk_procs = _get_processes(reg_settings)
         indexer_settings['queue_type'] = index_queue_type
         indexer_settings['is_server'] = is_indexer
         indexer_settings['is_worker'] = False
         indexer_settings['has_workers'] = False
-        indexer_settings['worker_procs'] = 0
+        indexer_settings['worker_procs'] = index_wrk_procs
         indexer_settings['chunk_size'] = 1024
         if index_queue_type not in NON_REDIS_QUEUES:
             indexer_settings['redis_ip'] = reg_settings['redis_ip']
             indexer_settings['redis_port'] = reg_settings['redis_port']
+        if is_indexer and index_queue_type == BASE_MEMORY_QUEUE:
+            msg = 'Base in memory queue must have worker on server'
+            if not is_index_worker:
+                raise TypeError(msg)
+            if not indexer_settings['worker_procs']:
+                msg += '. And more than one worker process'
+                raise TypeError(msg)
         if is_index_worker:
             # Worker index process or Main index process with internal workers
-            index_wrk_procs = _get_processes(reg_settings)
-            indexer_settings['worker_procs'] = index_wrk_procs
             indexer_settings['has_workers'] = is_indexer
             if not is_indexer:
                 indexer_settings['is_worker'] = True
@@ -128,7 +136,7 @@ def _get_processes(reg_settings):
 def _do_record(index_listener, result):
     '''
     Helper for index view_config function
-    Runs after _run_index if record parameter was in request
+    Runs after run index if record parameter was in request
     '''
     try:
         index_listener.registry_es.index(
@@ -226,11 +234,15 @@ def index_worker(request):
     '''Run Worker, server must be started'''
     indexer_settings = request.registry.get(INDEX_SETTINGS)
     indexer = request.registry.get(INDEXER)
-    if not indexer or not indexer_settings:
+    if (
+            indexer_settings['queue_type'] == BASE_MEMORY_QUEUE or
+            not indexer or
+            not indexer_settings
+        ):
         return {}
     skip_consume = 0
     batch_size = indexer_settings['chunk_size']
-    uuid_queue_worker = _get_uuid_queue(indexer_settings, worker=True)
+    uuid_queue_worker = _get_uuid_queue(indexer_settings)
     _run_uuid_queue_worker(
         uuid_queue_worker,
         request,
@@ -574,8 +586,15 @@ def _run_index(
     uuids = index_listener.uuid_store.uuids
     uuid_queue_worker = None
     indexer = index_listener.request.registry.get(INDEXER, None)
-    if indexer_settings['has_workers']:
-        uuid_queue_worker = _get_uuid_queue(indexer_settings)
+    if indexer_settings['queue_type'] == BASE_MEMORY_QUEUE:
+        # Base memory queue server must be its own worker
+        uuid_queue_worker = uuid_queue
+    elif indexer_settings['has_workers']:
+        # Non base memory queue server may have its own workers
+        uuid_queue_worker = _get_uuid_queue(
+            indexer_settings,
+            worker=True,
+        )
     if uuid_queue.queue_running():
         print('indexer uuid_queue.queue_running')
         listener_restarted = True

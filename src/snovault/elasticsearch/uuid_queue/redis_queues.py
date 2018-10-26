@@ -224,8 +224,8 @@ class RedisQueueMeta(UuidBaseQueueMeta):
             'batch_by': run_args['batch_by'],
             'restart': run_args['restart'],
             'snapshot_id': run_args['snapshot_id'],
-            'uuid_len': run_args['uuid_len'],
-            'xmin': run_args['xmin'],
+            'uuid_len': int(run_args['uuid_len']),
+            'xmin': int(run_args['xmin']),
         }
         self._client.hmset(self._key_runargs, set_run_args)
 

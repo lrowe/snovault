@@ -93,21 +93,31 @@ class UuidQueueWorker(object):
     * Worker needs a server ready to start.  After init loop
     server_ready to check for server queue availability
     '''
-    def __init__(self, queue_name, queue_type, client_options):
+    def __init__(
+            self,
+            queue_name,
+            queue_type,
+            client_options,
+            is_server=False,
+        ):
         # arg must be set by calling server_ready
         self._batch_by = None
         self.restart = None
         self.snapshot_id = None
         self.uuid_len = None
         self.xmin = None
-        if UuidQueueTypes.BASE_IN_MEMORY == queue_type:
+        if UuidQueueTypes.BASE_IN_MEMORY == queue_type and not is_server:
             raise TypeError(
                 'Not allowed to create a UuidQueueWorker of type %s.'
-                '  Server and worker must be the same for this type.' % (
+                '  Worker must be in Server for this queue type.' % (
                     queue_type,
                 )
             )
-        client = self.get_client(queue_type, client_options)
+        client = self.get_client(
+            queue_type,
+            client_options,
+            is_server=is_server
+        )
         self._queue = client.get_queue(queue_name, queue_type)
 
     def _init_run_args(self, run_args):
@@ -115,8 +125,8 @@ class UuidQueueWorker(object):
         self._batch_by = run_args['batch_by']
         self.restart = run_args['restart']
         self.snapshot_id = run_args['snapshot_id']
-        self.uuid_len = run_args['uuid_len']
-        self.xmin = run_args['xmin']
+        self.uuid_len = int(run_args['uuid_len'])
+        self.xmin = int(run_args['xmin'])
 
     @staticmethod
     def get_client(queue_type, client_options, is_server=False):
@@ -220,7 +230,7 @@ class UuidQueueWorker(object):
             ('batch_by', int),
             ('uuid_len', int),
             ('snapshot_id', str),
-            ('xmin', str),
+            ('xmin', int),
             ('restart', bool),
         )
         args = self._queue.qmeta.get_run_args()
@@ -249,8 +259,17 @@ class UuidQueue(UuidQueueWorker):
         - Setting the meta data stop flag to tell workers to stop
     '''
     def __init__(self, queue_name, queue_type, client_options):
-        client = self.get_client(queue_type, client_options, is_server=True)
-        self._queue = client.get_queue(queue_name, queue_type)
+        if queue_type == BASE_IN_MEMORY:
+            # Base memory queue servers must be workers too
+            super().__init__(
+                queue_name,
+                queue_type,
+                client_options,
+                is_server=True
+            )
+        else:
+            client = self.get_client(queue_type, client_options, is_server=True)
+            self._queue = client.get_queue(queue_name, queue_type)
 
     def initialize(self, run_args):
         '''
@@ -306,7 +325,6 @@ class UuidQueue(UuidQueueWorker):
             self._update_qmeta_count(-1 * len(uuids))
         self._update_qmeta_count(success_cnt)
         return failed, success_cnt, call_cnt
-
 
     def purge(self):
         '''Clear Queue'''

@@ -23,7 +23,7 @@ class BaseClient(object):
         pass
 
     # pylint: disable=no-self-use, unused-argument
-    def get_queue(self, queue_name, queue_type, args):
+    def get_queue(self, queue_name, queue_type):
         '''Create a Queue'''
         if queue_type == BASE_IN_MEMORY:
             queue_class = UuidBaseQueue
@@ -48,6 +48,8 @@ class UuidBaseQueueMeta(object):
         self._got_batches = {}
         self._uuids_added = 0
         self._successes = 0
+        self._is_running = False
+        self._run_args = None
 
     def _add_errors(self, errors):
         '''Add errors as batch after consumed'''
@@ -65,6 +67,16 @@ class UuidBaseQueueMeta(object):
             'uuids': values,
         }
         return batch_id
+
+    def get_run_args(self):
+        '''
+        Return run args needed for workers
+        '''
+        return self._run_args
+
+    def is_server_running(self):
+        '''Return boolean for server running flag'''
+        return self._is_running
 
     def remove_batch(self, batch_id, successes, errors):
         '''Update with outcome consumed uuids'''
@@ -97,13 +109,37 @@ class UuidBaseQueueMeta(object):
                 did_finish = True
         return did_finish, err_msg
 
+    def set_args(self):
+        '''Initial args'''
+        self._is_running = True
+
+    def set_run_args(self, run_args):
+        '''
+        Add run args needed for workers
+        * Only defined values are added
+        '''
+        self._run_args = {
+            'batch_by': run_args['batch_by'],
+            'restart': run_args['restart'],
+            'snapshot_id': run_args['snapshot_id'],
+            'uuid_len': int(run_args['uuid_len']),
+            'xmin': int(run_args['xmin']),
+        }
+
+    def set_to_not_running(self):
+        '''
+        Mimic client server running flag off
+        '''
+        self._is_running = False
+
     def store_logs(self, batch_logs, batch_id, successes, errors):
         '''Stores indexer batch_logs with batch info'''
         pass
 
     def get_errors(self):
         '''Get all errors from queue that were sent in remove_batch'''
-        return self._errors
+        warning_message = None
+        return self._errors, warning_message
 
     # pylint: disable=unused-argument
     def is_finished(
