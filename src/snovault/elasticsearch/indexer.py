@@ -630,12 +630,13 @@ def _run_index(
     else:
         if SHORT_INDEXING:
             # If value is truthly then uuids will be limited.
+            start_len = len(index_listener.uuid_store.uuids)
+            index_listener.short_uuids(SHORT_INDEXING)
             log.warning(
                 'Shorting UUIDS from %d to %d',
+                start_len,
                 len(index_listener.uuid_store.uuids),
-                SHORT_INDEXING,
             )
-            index_listener.short_uuids(SHORT_INDEXING)
         result, did_fail = init_cycle(
             uuid_queue,
             uuids,
