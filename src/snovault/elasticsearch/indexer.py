@@ -36,6 +36,7 @@ from .uuid_queue import (
 log = logging.getLogger('snovault.elasticsearch.es_index_listener')  # pylint: disable=invalid-name
 MAX_CLAUSES_FOR_ES = 8192
 SHORT_INDEXING = None  # Falsey value will turn off short
+SHORT_INDEXING = 10000  # Falsey value will turn off short
 INDEX_SETTINGS = 'INDEX_SETTINGS'
 LOCAL_INDEX_QUEUES = [UuidQueueTypes.BASE_IN_MEMORY]
 NON_REDIS_INDEX_QUEUES = [
