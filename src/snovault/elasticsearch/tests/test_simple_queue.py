@@ -478,7 +478,7 @@ class TestSimpleServer(TestCase):
         )
 
 
-class TestSimpleUuidworker(TestCase):
+class TestSimpleUuidWorker(TestCase):
     '''Test Simple Uuid worker'''
     members = [
         ('queue_options', dict),

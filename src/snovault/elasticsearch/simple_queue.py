@@ -3,7 +3,6 @@ Simple uuid queue for indexing process
 - Can be overridden by another script, class, module as long as it exposes
 the proper functions used in the indexer classes.
 '''
-import logging
 import time
 
 
