@@ -41,14 +41,33 @@ es_logger = logging.getLogger("elasticsearch")
 es_logger.setLevel(logging.ERROR)
 log = logging.getLogger('snovault.elasticsearch.es_index_listener')
 MAX_CLAUSES_FOR_ES = 8192
+DEFAULT_QUEUE = 'Simple'
+
+
+def _update_for_uuid_queues(registry):
+    """
+    Update registry with uuid queue module if it exists
+    """
+    extra_queues = []
+    try:
+        import snovault.elasticsearch.uuid_queue as queue_adapter
+    except ImportError:
+        log.info('No uuid_queue package in elasticsearch module')
+    else:
+        registry['UuidQueue'] = queue_adapter.QueueAdapter
+        extra_queues = queue_adapter.QueueTypes.get_all()
+        log.info('Extra Indexer Queues Available: %s', ','.join(extra_queues))
+    registry['available_queues'].extend(extra_queues)
+
 
 def includeme(config):
+    """Add index listener endpoint and setup Indexer"""
     config.add_route('index', '/index')
     config.scan(__name__)
     registry = config.registry
-    available_queues = ['Simple']
+    available_queues = [DEFAULT_QUEUE]
     registry['available_queues'] = available_queues
-    log.info('Indexer Queues Available: %s' % ','.join(available_queues))
+    _update_for_uuid_queues(registry)
     registry[INDEXER] = Indexer(registry)
 
 def get_related_uuids(request, es, updated, renamed):
@@ -335,8 +354,16 @@ class Indexer(object):
             'batch_size': queue_worker_batch_size,
         }
         if is_queue_server and queue_type in available_queues:
-            if not queue_type or queue_type == 'Simple':
+            if not queue_type or queue_type == DEFAULT_QUEUE:
                 self.queue_server = SimpleUuidServer(queue_options)
+            elif 'UuidQueue' in registry:
+                queue_name = 'indxQ'
+                queue_options['uuid_len'] = 36
+                self.queue_server = registry['UuidQueue'](
+                    queue_name,
+                    queue_type,
+                    queue_options,
+                )
             else:
                 log.error('No queue available for Indexer')
             if self.queue_server and is_queue_worker:
