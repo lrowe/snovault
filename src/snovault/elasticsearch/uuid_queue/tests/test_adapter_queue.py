@@ -662,6 +662,8 @@ class TestWorkerAdapater(TestCase):
         ('is_running', bool),
         ('get_cnt', int),
         ('uuid_cnt', int),
+        ('chunk_size', int),
+        ('processes', int),
     ]
     meth_func = [
         # Uuids
