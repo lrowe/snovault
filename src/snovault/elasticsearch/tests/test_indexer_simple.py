@@ -12,7 +12,6 @@ import pytest
 from snovault import STORAGE
 from snovault.app import main
 from snovault.elasticsearch.indexer import Indexer
-from snovault.elasticsearch.mpindexer import MPIndexer
 from snovault.elasticsearch.interfaces import (
     APP_FACTORY,
     ELASTIC_SEARCH,
@@ -220,18 +219,6 @@ def test_smsimp_indexrun_emberr(small_index_objs):
     for worker_run in indexer.worker_runs:
         uuids_ran += worker_run['uuids']
     assert uuids_ran == SMALL_UUIDS_CNT
-
-
-def test_simple_mpindexinit():
-    """test simple mpindexer"""
-    batch_size = SMALL_UUIDS_CNT // SMALL_BATCH_DIV
-    registry = MockRegistry(batch_size)
-    processes = registry.settings['queue_worker_processes']
-    # pylint: disable=unused-variable
-    mpindexer = MPIndexer(registry, processes=processes)
-    invalidated = _get_uuids(SMALL_UUIDS_CNT)
-    request = MockRequest(embed_wait=SMALL_REQ_EMBED_WAIT)
-    assert True
 
 
 class TestIndexer(TestCase):
