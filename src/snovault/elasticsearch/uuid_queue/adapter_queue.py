@@ -263,6 +263,7 @@ class WorkerAdapter(object):
         msg = self._queue.update_finished(self.worker_id, results)
         if msg == 'Okay':
             self.uuid_cnt = 0
+            msg = None
         else:
             msg = 'Update finished could not reset worker: %s' % msg
         return msg
