@@ -68,7 +68,15 @@ class MockRegistry(dict):
     There is probably a better way to do this!
     """
 
-    def __init__(self, batch_size, processes=1):
+    def __init__(
+            self,
+            batch_size,
+            processes=1,
+            queue_name='mockindxQ',
+            queue_host=None,
+            queue_port=None,
+            queue_db=2,
+        ):
         super().__init__()
         queue_type = 'Simple'
         self[ELASTIC_SEARCH] = MockES()
@@ -77,12 +85,16 @@ class MockRegistry(dict):
         self['available_queues'] = [queue_type]
         self.settings = {
             'snovault.elasticsearch.index': 'index-name',
+            'queue_name': queue_name,
             'queue_type': queue_type,
             'queue_server': 'true',
             'queue_worker': 'true',
             'queue_worker_processes': processes,
             'queue_worker_chunk_size': 2,
             'queue_worker_batch_size': batch_size,
+            'queue_host': queue_host,
+            'queue_port': queue_port,
+            'queue_db': queue_db,
         }
 
 

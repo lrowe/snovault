@@ -7,6 +7,14 @@ from .queues.base_queue import (
     BaseQueueClient,
     BASE_QUEUE_TYPE,
 )
+from .queues.redis_queues import (
+    REDIS_LIST,
+    REDIS_LIST_PIPE,
+    REDIS_SET,
+    REDIS_SET_PIPE,
+    REDIS_SET_PIPE_EXEC,
+    RedisClient,
+)
 
 
 def _get_combined_uuids_gen(batch_by, uuid_len, max_value_size, uuids):
@@ -50,6 +58,11 @@ class QueueTypes(object):
     '''
     QUEUES = [
         (BASE_QUEUE_TYPE, BaseQueueClient),
+        (REDIS_LIST, RedisClient),
+        (REDIS_LIST_PIPE, RedisClient),
+        (REDIS_SET, RedisClient),
+        (REDIS_SET_PIPE, RedisClient),
+        (REDIS_SET_PIPE_EXEC, RedisClient),
     ]
 
     @classmethod
@@ -111,7 +124,7 @@ class QueueAdapter(object):
             # server and worker queue point to same obj
             worker_queue = self._queue
         else:
-            worker_queue = self._get_queue()
+            worker_queue = self._get_queue(is_worker=True)
         return worker_queue
 
     def get_worker(self):
@@ -188,16 +201,20 @@ class QueueAdapter(object):
             return True
         worker_conns = self._queue.get_worker_conns()
         for worker_conn in worker_conns.values():
-            if worker_conn['uuid_cnt']:
+            if int(worker_conn['uuid_cnt']):
                 return True
         return False
 
     # Queue Client
-    def _get_queue(self): #
+    def _get_queue(self, is_worker=False):
         client_class = QueueTypes.get_queue_client_class(self._queue_type)
         if client_class:
-            client = client_class()
-            return client.get_queue(self._queue_type)
+            client = client_class(self._queue_options)
+            return client.get_queue(
+                self._queue_name,
+                self._queue_type,
+                is_worker=is_worker,
+            )
         return None
 
 

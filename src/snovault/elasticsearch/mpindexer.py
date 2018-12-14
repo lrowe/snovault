@@ -1,3 +1,4 @@
+import os
 from snovault import DBSESSION
 from contextlib import contextmanager
 from multiprocessing import get_context
@@ -104,7 +105,18 @@ def update_object_in_snapshot(args):
     with snapshot(xmin, snapshot_id):
         request = get_current_request()
         indexer = request.registry[INDEXER]
-        return indexer.update_object(request, uuid, xmin, restart)
+        map_info = {
+            'start_time': time.time(),
+            'end_time': None,
+            'run_time': None,
+            'pid':os.getpid(),
+        }
+        update_info = indexer.update_object(request, uuid, xmin, restart)
+        update_info['snapshot_id'] = snapshot_id
+        map_info['end_time'] = time.time()
+        map_info['run_time'] = map_info['end_time'] - map_info['start_time']
+        update_info['map_info'] = map_info
+        return update_info
 
 
 # Running in main process
@@ -148,17 +160,91 @@ class MPIndexer(Indexer):
             for uuid in uuids
         ]
         errors = []
+        update_infos = []
+        start_time = time.time()
         try:
-            for i, error in enumerate(self.pool.imap_unordered(
-                    update_object_in_snapshot, tasks, chunkiness)):
+            for i, update_info in enumerate(
+                    self.pool.imap_unordered(
+                        update_object_in_snapshot,
+                        tasks,
+                        chunkiness)
+                ):
+                update_info['return_time'] = time.time()
+                update_infos.append(update_info)
+                error = update_info['error']
                 if error is not None:
+                    print('Error', error)
                     errors.append(error)
                 if (i + 1) % 1000 == 0:
                     log.info('Indexing %d', i + 1)
         except:
             self.shutdown()
             raise
+        total_time = time.time() - start_time
+        tasks_len = len(tasks)
+        self._print_update_infos(
+            update_infos,
+            total_time,
+            tasks_len,
+            chunkiness,
+        )
         return errors
+
+    def _print_update_infos(
+            self,
+            update_infos,
+            total_time,
+            tasks_len,
+            chunkiness,
+            sub_print=False,
+        ):
+        if sub_print:
+            self._sub_print(update_infos)
+        print(
+            self.queue_type,
+            self.queue_worker.processes,
+            self.chunk_size,
+            chunkiness,
+            self.batch_size,
+            tasks_len,
+            total_time,
+        )
+
+    def _sub_print(self, update_infos):
+        for cnt, update_info in enumerate(update_infos, 1):
+            print(cnt, self.queue_type)
+            print(
+                '  update_info',
+                update_info['uuid'],
+                update_info['run_time']
+            )
+            map_info = update_info['map_info']
+            print(
+                '  map_info',
+                map_info['pid'],
+                map_info['run_time'],
+            )
+            req_info = update_info['req_info']
+            print(
+                '  req_info',
+                req_info['url'],
+                req_info['run_time'],
+                len(req_info['errors'])
+            )
+            es_info = update_info['es_info']
+            print(
+                '   es_info',
+                es_info['item_type'],
+                es_info['run_time'],
+                len(es_info['backoffs'])
+            )
+            for num, backoff in es_info['backoffs'].items():
+                print(
+                    '      backoff',
+                    num,
+                    backoff['run_time'],
+                    backoff['error'],
+                )
 
     def shutdown(self):
         if 'pool' in self.__dict__:

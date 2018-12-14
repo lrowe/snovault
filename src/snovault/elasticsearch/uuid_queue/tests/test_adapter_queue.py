@@ -28,15 +28,16 @@ from ..queues.base_queue import (
     BaseQueueClient,
     BaseQueue,
 )
+from ..queues.redis_queues import (
+    RedisClient,
+)
+from .test_redis_queue import (
+    REDIS_QUEUES,
+    REDIS_QUEUE_CLASSES,
+)
 
 MOCK_TIME = 123456.654321
-REDIS_QUEUE_TYPES = [
-    'REDIS_LIST',
-    'REDIS_LIST_PIPE',
-    'REDIS_SET',
-    'REDIS_SET_PIPE',
-    'REDIS_SET_PIPE_EXEC',
-]
+REDIS_QUEUE_TYPES = [a for a, b in REDIS_QUEUES] 
 UUID_LENGTH = len('75659c39-eaea-47b7-ba26-92e9ff183e6c')
 
 
@@ -95,7 +96,6 @@ def test_getcombids_one_batch():
     full_length = 0
     partial_length = 0
     for comb_uuid_str in combined_uuids:
-        print(comb_uuid_str)
         combined_uuids_count += 1
         if len(comb_uuid_str) == uuid_len * batch_by:
             full_length += 1
@@ -213,6 +213,8 @@ class TestQueueTypes(TestCase):
             queue_type, queue_client = queue_set
             if queue_type == BASE_QUEUE_TYPE:
                 self.assertTrue(queue_client is BaseQueueClient)
+            elif queue_type in REDIS_QUEUE_TYPES:
+                self.assertTrue(queue_client is RedisClient)
             else:
                 print("New Queue(%s) not handled in test" % queue_type)
                 assert False
@@ -242,11 +244,10 @@ class TestQueueTypes(TestCase):
 
     def test_redis_queue_types(self):
         """
-        Test that redis queue types DO NOT EXIST
-        - This will failed once redis queues are added
+        Test that redis queue types exist
         """
         for queue_type in REDIS_QUEUE_TYPES:
-            self.assertFalse(
+            self.assertTrue(
                 QueueTypes.check_queue_type(queue_type)
             )
 
@@ -422,7 +423,7 @@ class TestQueueAdapter(TestCase):
 
     def test_get_worker_queue_redis(self):
         '''Test _get_worker_queue for redis queue types'''
-        for queue_type in REDIS_QUEUE_TYPES:
+        for queue_type, queue_class in REDIS_QUEUE_CLASSES:
             queue_name = queue_type.lower()
             queue_type = queue_type
             queue_options = {
@@ -430,15 +431,16 @@ class TestQueueAdapter(TestCase):
                 'chunk_size': 1,
                 'batch_size': 10,
                 'uuid_len': 2,
+                'host': 'localhost',
+                'port': 6379,
             }
             tmp_queue_server = QueueAdapter(
                 queue_name,
                 queue_type,
                 queue_options
             )
-            # redis queues not implemented - this will fail after they are
             # pylint: disable=protected-access
-            self.assertIsNone(tmp_queue_server._queue)
+            self.assertIsInstance(tmp_queue_server._queue, queue_class)
 
     def test_get_worker_base(self):
         '''Test get_worker with base queue'''
@@ -466,7 +468,7 @@ class TestQueueAdapter(TestCase):
 
     def test_get_worker_redis(self):
         '''Test get_worker for redis queues'''
-        for queue_type in REDIS_QUEUE_TYPES:
+        for queue_type, queue_class in REDIS_QUEUE_CLASSES:
             queue_name = queue_type.lower()
             queue_type = queue_type
             queue_options = {
@@ -474,15 +476,16 @@ class TestQueueAdapter(TestCase):
                 'chunk_size': 1,
                 'batch_size': 10,
                 'uuid_len': 2,
+                'host': 'localhost',
+                'port': 6379,
             }
             tmp_queue_server = QueueAdapter(
                 queue_name,
                 queue_type,
                 queue_options
             )
-            # redis queues not implemented - this will fail after they are
             # pylint: disable=protected-access
-            self.assertIsNone(tmp_queue_server._queue)
+            self.assertIsInstance(tmp_queue_server._queue, queue_class)
 
     def test_update_worker_conn(self):
         '''Test update_worker_conn'''
@@ -612,7 +615,7 @@ class TestQueueAdapter(TestCase):
 
     def test_get_queue_redis(self):
         '''Test _get_queue for redis queues'''
-        for queue_type in REDIS_QUEUE_TYPES:
+        for queue_type, queue_class in REDIS_QUEUE_CLASSES:
             queue_name = 'test-wrk-queue-name'
             queue_type = queue_type
             queue_options = {
@@ -620,16 +623,17 @@ class TestQueueAdapter(TestCase):
                 'chunk_size': 1,
                 'batch_size': 1,
                 'uuid_len': 2,
+                'host': 'localhost',
+                'port': 6379,
             }
             tmp_queue_server = QueueAdapter(
                 queue_name,
                 queue_type,
                 queue_options
             )
-            # This will failed when redis queue added
             # pylint: disable=protected-access
-            self.assertIsNone(tmp_queue_server._queue)
-            self.assertIsNone(tmp_queue_server._get_queue())
+            self.assertIsInstance(tmp_queue_server._queue, queue_class)
+            self.assertIsInstance(tmp_queue_server._get_queue(), queue_class)
 
     def test_get_queue_bad_type(self):
         '''Test _get_queue'''
@@ -679,8 +683,8 @@ class TestWorkerAdapater(TestCase):
         (queue_name, queue_type,
          queue_options, worker_id) = args
         client_class = QueueTypes.get_queue_client_class(queue_type)
-        client = client_class()
-        queue = client.get_queue(queue_type)
+        client = client_class(queue_options)
+        queue = client.get_queue(queue_name, queue_type)
         return WorkerAdapter(
             queue_name,
             queue_options,
@@ -739,7 +743,6 @@ class TestWorkerAdapater(TestCase):
                 )
         for item in self.meth_func:
             self.assertTrue(hasattr(self.base_worker, item))
-            print(item, type(getattr(self.base_worker, item)))
             self.assertTrue(
                 str(type(getattr(self.base_worker, item))) in [
                     "<class 'method'>",
@@ -868,12 +871,12 @@ class TestWorkerAdapater(TestCase):
             self.base_worker_id,
         )
         base_worker.uuid_cnt = 4
-        return_msg = 'Okay'
+        return_msg = 'Okay' 
         # pylint: disable=protected-access
         base_worker._queue.update_finished = mock.MagicMock(
             return_value=return_msg
         )
-        exepcted_result_msg = return_msg
+        exepcted_result_msg = None  # None when 'Okay' 
         given_results = {'test': 1}
         result_msg = base_worker.update_finished(given_results)
         self.assertEqual(1, base_worker._queue.update_finished.call_count)

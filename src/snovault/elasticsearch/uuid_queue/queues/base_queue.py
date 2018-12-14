@@ -19,8 +19,11 @@ class BaseQueueClient(object):
 
     * Queue client must expose the 'get_queue' function to the adapter.
     '''
+    def __init__(self, queue_options):
+        pass
+
     # pylint: disable=no-self-use, unused-argument
-    def get_queue(self, queue_type):
+    def get_queue(self, queue_name, queue_type, is_worker=False):
         '''Create a Queue'''
         if queue_type == BASE_QUEUE_TYPE:
             return BaseQueue()
@@ -178,7 +181,7 @@ class BaseQueue(object):
     def get_uuids(self, cnt):
         '''The only way to get uuids from queue'''
         uuids = []
-        if cnt == -1:
+        if cnt <= -1:
             cnt = len(self._uuids)
         if cnt:
             while cnt > 0:
@@ -223,7 +226,9 @@ class BaseQueue(object):
         for worker_id, worker_conn in worker_conns.items():
             if worker_id == given_worker_id:
                 errors_added = self.add_errors(worker_id, given_results['errors'])
-                uuid_cnt = worker_conn['uuid_cnt'] - given_results['successes'] - errors_added
+                uuid_cnt = int(worker_conn['uuid_cnt'])
+                uuid_cnt -= given_results['successes']
+                uuid_cnt -= errors_added
                 self.update_worker_conn(
                     worker_id,
                     uuid_cnt,

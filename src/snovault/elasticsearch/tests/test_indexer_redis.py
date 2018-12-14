@@ -5,16 +5,11 @@ from unittest import (
 )
 
 from snovault.elasticsearch.indexer import Indexer
-from snovault.elasticsearch.uuid_queue import (
-    QueueAdapter,
-    QueueTypes,
-)
-from snovault.elasticsearch.uuid_queue.adapter_queue import (
-    WorkerAdapter,
-)
-from snovault.elasticsearch.uuid_queue.queues.base_queue import (
-    BaseQueue,
-    BASE_QUEUE_TYPE,
+from snovault.elasticsearch.uuid_queue import QueueAdapter
+from snovault.elasticsearch.uuid_queue.adapter_queue import WorkerAdapter
+from snovault.elasticsearch.uuid_queue.queues.redis_queues import (
+    RedisQueue,
+    REDIS_LIST,
 )
 
 from .test_indexer_simple import (
@@ -23,8 +18,11 @@ from .test_indexer_simple import (
     MockRequest,
 )
 
+TEST_QUEUE_NAME = 'testindxQ'
+TEST_REDIS_DB = 3
 
-class TestIndexerBaseQueue(TestCase):
+
+class TestIndexerRedisQueue(TestCase):
     """Test Indexer in indexer.py with base queue set"""
     @classmethod
     def setUpClass(cls):
@@ -38,27 +36,34 @@ class TestIndexerBaseQueue(TestCase):
         # Indexer
         batch_size = 100
         processes = 1
-        registry = MockRegistry(batch_size, processes=processes)
-        queue_type = BASE_QUEUE_TYPE
+        registry = MockRegistry(
+            batch_size,
+            processes=processes,
+            queue_name=TEST_QUEUE_NAME,
+            queue_host='localhost',
+            queue_port=6379,
+            queue_db=TEST_REDIS_DB,
+        )
+        queue_type = REDIS_LIST
         registry.settings['queue_type'] = queue_type
         registry['available_queues'].append(queue_type)
         registry['UuidQueue'] = QueueAdapter
         cls.indexer = Indexer(registry)
 
+    @classmethod
+    def tearDownClass(cls):
+        # pylint: disable=protected-access
+        q_srv_meta = cls.indexer.queue_server._queue._qmeta
+        for key in q_srv_meta._client.keys(TEST_QUEUE_NAME + '*'):
+            q_srv_meta._client.delete(key)
+
     def tearDown(self):
         """Reset the queue and queue meta data"""
         # pylint: disable=protected-access
-        # Queue
-        self.indexer.queue_server._queue._uuids = []
-        # Queue Meta Data
-        self.indexer.queue_server._queue._qmeta._errors = []
-        self.indexer.queue_server._queue._qmeta._uuid_count = 0
-        q_wrk_id = self.indexer.queue_worker.worker_id
-        self.indexer.queue_server._queue._qmeta._worker_conns[q_wrk_id] = {
-            'uuid_cnt': 0,
-            'get_cnt': 0,
-        }
-        self.indexer.queue_server._queue._qmeta._worker_results[q_wrk_id] = []
+        q_srv_meta = self.indexer.queue_server._queue._qmeta
+        q_srv_meta._client.set(q_srv_meta._key_addedcount, 0)
+        q_srv_meta._client.set(q_srv_meta._key_successescount, 0)
+        q_srv_meta._client.set(q_srv_meta._key_addedcount, 0)
 
     def test_init(self):
         """Test Indexer Init"""
@@ -67,9 +72,9 @@ class TestIndexerBaseQueue(TestCase):
         self.assertIsInstance(q_srv, QueueAdapter)
         self.assertIsInstance(q_wrk, WorkerAdapter)
         # pylint: disable=protected-access
-        self.assertIsInstance(q_srv._queue, BaseQueue)
-        self.assertIsInstance(self.indexer.queue_worker._queue, BaseQueue)
-        self.assertTrue(q_srv._queue is q_wrk._queue)
+        self.assertIsInstance(q_srv._queue, RedisQueue)
+        self.assertIsInstance(q_wrk._queue, RedisQueue)
+        self.assertTrue(q_srv._queue is not q_wrk._queue)
 
     def test_serve_objects_no_uuids(self):
         """Test serve objects with no_uuids"""
