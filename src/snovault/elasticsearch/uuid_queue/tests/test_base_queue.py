@@ -224,5 +224,3 @@ class TestBaseQueueMeta(TestCase):
             id(self.queue_meta._worker_conns),
             id(self.queue_meta.get_worker_conns())
         )
-
-
