@@ -337,6 +337,7 @@ class Indexer(object):
         self.worker_runs = []
         available_queues = registry['available_queues']
         queue_type = registry.settings.get('queue_type', None)
+        self.queue_type = queue_type
         is_queue_server = asbool(registry.settings.get('queue_server'))
         is_queue_worker = asbool(registry.settings.get('queue_worker'))
         queue_worker_processes = int(
@@ -348,6 +349,8 @@ class Indexer(object):
         queue_worker_batch_size = int(
             registry.settings.get('queue_worker_batch_size', 1024)
         )
+        self.chunk_size = queue_worker_chunk_size
+        self.batch_size = queue_worker_batch_size
         queue_options = {
             'processes': queue_worker_processes,
             'chunk_size': queue_worker_chunk_size,
@@ -380,6 +383,7 @@ class Indexer(object):
         ):
         '''Run indexing process with queue server and optional worker'''
         # pylint: disable=too-many-arguments
+        print('serve_objects')
         errors = []
         err_msg = None
         if self.queue_server.is_indexing():
@@ -421,6 +425,7 @@ class Indexer(object):
 
     def run_worker(self, request, xmin, snapshot_id, restart):
         '''Run the uuid queue worker'''
+        print('run_worker')
         batch_uuids = self.queue_worker.get_uuids()
         log.warning(
             'running %s with %d',
@@ -460,6 +465,7 @@ class Indexer(object):
         ):
         # pylint: disable=too-many-arguments, unused-argument
         '''Run indexing process on uuids'''
+        print('update_objects')
         errors = []
         for i, uuid in enumerate(uuids):
             error = self.update_object(request, uuid, xmin)
@@ -471,6 +477,29 @@ class Indexer(object):
         return errors
 
     def update_object(self, request, uuid, xmin, restart=False):
+        update_info = {
+            'uuid': uuid,
+            'xmin': xmin,
+            'start_time': time.time(),
+            'end_time': None,
+            'run_time': None,
+            'error': None,
+            'return_time': None,
+        }
+        req_info = {
+            'start_time': None,
+            'end_time': None,
+            'run_time': None,
+            'errors': [],
+            'url': None
+        }
+        es_info = {
+            'start_time': None,
+            'end_time': None,
+            'run_time': None,
+            'backoffs': {},
+            'item_type': None,
+        }
         request.datastore = 'database'  # required by 2-step indexer
 
         # OPTIONAL: restart support
@@ -486,18 +515,39 @@ class Indexer(object):
         # OPTIONAL: restart support
 
         last_exc = None
+        req_info['start_time'] = time.time()
+        backoff = 0
         try:
-            doc = request.embed('/%s/@@index-data/' % uuid, as_user='INDEXER')
+            req_info['url'] ='/%s/@@index-data/' % uuid
+            doc = request.embed(req_info['url'], as_user='INDEXER')
         except StatementError:
             # Can't reconnect until invalid transaction is rolled back
             raise
         except Exception as e:
-            log.error('Error rendering /%s/@@index-data', uuid, exc_info=True)
+            msg = 'Error rendering /%s/@@index-data' % uuid
+            log.error(msg, exc_info=True)
             last_exc = repr(e)
-
+            req_info['errors'].append(
+                {
+                    'backoff': backoff,
+                    'msg': msg,
+                    'last_exc': last_exc,
+                }
+            )
+        req_info['end_time'] = time.time()
+        req_info['run_time'] = req_info['end_time'] - req_info['start_time']
+        es_info['start_time'] = time.time()
+        es_info['item_type'] = doc['item_type']
         if last_exc is None:
+            do_break = False
             for backoff in [0, 10, 20, 40, 80]:
                 time.sleep(backoff)
+                backoff_info = {
+                    'start_time': time.time(),
+                    'end_time': None,
+                    'run_time': None,
+                    'error': None,
+                }
                 try:
                     self.es.index(
                         index=doc['item_type'], doc_type=doc['item_type'], body=doc,
@@ -508,21 +558,59 @@ class Indexer(object):
                     # Can't reconnect until invalid transaction is rolled back
                     raise
                 except ConflictError:
-                    log.warning('Conflict indexing %s at version %d', uuid, xmin)
-                    return
+                    msg = 'Conflict indexing %s at version %d' % (uuid, xmin)
+                    log.warning(msg)
+                    backoff_info['error'].append(
+                        {
+                            'msg': msg,
+                            'last_exc': None,
+                        }
+                    )
+                    do_break = True
                 except (ConnectionError, ReadTimeoutError, TransportError) as e:
-                    log.warning('Retryable error indexing %s: %r', uuid, e)
+                    msg = 'Retryable error indexing %s: %r' % (uuid, e)
+                    log.warning(msg)
                     last_exc = repr(e)
+                    backoff_info['error'].append(
+                        {
+                            'msg': msg,
+                            'last_exc': last_exc,
+                        }
+                    )
                 except Exception as e:
-                    log.error('Error indexing %s', uuid, exc_info=True)
+                    msg = 'Error indexing %s' % (uuid)
+                    log.error(msg, exc_info=True)
                     last_exc = repr(e)
-                    break
+                    backoff_info['error'].append(
+                        {
+                            'msg': msg,
+                            'last_exc': None,
+                        }
+                    )
+                    do_break = True
                 else:
                     # Get here on success and outside of try
-                    return
-
-        timestamp = datetime.datetime.now().isoformat()
-        return {'error_message': last_exc, 'timestamp': timestamp, 'uuid': str(uuid)}
+                    do_break = True
+                end_time = time.time()
+                backoff_info['end_time'] = end_time
+                backoff_info['run_time'] = end_time - backoff_info['start_time']
+                es_info['backoffs'][str(backoff)] = backoff_info
+                if do_break:
+                    break
+        es_info['end_time'] = time.time()
+        es_info['run_time'] = es_info['end_time'] - es_info['start_time']
+        update_info['req_info'] = req_info
+        update_info['es_info'] = es_info
+        if last_exc:
+            update_info['error'] = {
+                'error_message': last_exc,
+                'timestamp': datetime.datetime.now().isoformat(),
+                'uuid': str(uuid)
+            }
+        end_time = time.time()
+        update_info['end_time'] = end_time
+        update_info['run_time'] = end_time - update_info['start_time']
+        return update_info
 
     def shutdown(self):
         pass
