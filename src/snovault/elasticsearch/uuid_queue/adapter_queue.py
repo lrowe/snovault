@@ -217,6 +217,8 @@ class WorkerAdapter(object):
         # Worker conn info
         self.get_cnt = 0
         self.uuid_cnt = 0
+        self.processes = self._queue_options['processes']
+        self.chunk_size = self._queue_options['chunk_size']
 
     # Uuids
     @staticmethod
