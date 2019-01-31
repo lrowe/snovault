@@ -257,7 +257,7 @@ def index(request):
     if invalidated and not dry_run:
         invalid = []
         for uuid in invalidated:
-            if len(invalid) < 10000:
+            if len(invalid) < 1000000000:
                 invalid.append(uuid)
         invalidated = invalid
         if len(stage_for_followup) > 0:
@@ -344,8 +344,8 @@ class Indexer(object):
         queue_type = registry.settings.get('queue_type', None)
         self.queue_type = queue_type
         queue_name = registry.settings.get('queue_name', 'indxQ')
-        queue_host = registry.settings.get('queue_host')
-        queue_port = registry.settings.get('queue_port')
+        queue_host = registry.settings.get('queue_host', 'localhost')
+        queue_port = registry.settings.get('queue_port', 6379)
         queue_db = registry.settings.get('queue_db', 2)
         is_queue_server = asbool(registry.settings.get('queue_server'))
         is_queue_worker = asbool(registry.settings.get('queue_worker'))
