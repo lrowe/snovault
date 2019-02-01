@@ -69,6 +69,7 @@ def includeme(config):
     is_indexer = registry.settings.get('indexer')
     is_vis_indexer = registry.settings.get('visindexer')
     is_reg_indexer = registry.settings.get('regionindexer')
+    print(is_indexer, is_vis_indexer, is_reg_indexer)
     if is_vis_indexer or is_reg_indexer:
         registry[INDEXER] = Indexer(registry)
     elif is_indexer:
@@ -343,10 +344,10 @@ def get_current_xmin(request):
 
 class Indexer(object):
     def __init__(self, registry):
+        print('creating indexer')
         self.es = registry[ELASTIC_SEARCH]
         self.esstorage = registry[STORAGE]
         self.index = registry.settings['snovault.elasticsearch.index']
-        print(registry.settings.keys())
         if registry.settings.get('indexer'):
             self.queue_server = None
             self.queue_worker = None
