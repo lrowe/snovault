@@ -65,11 +65,19 @@ def includeme(config):
     config.add_route('index', '/index')
     config.scan(__name__)
     registry = config.registry
-    if registry.settings.get('indexer'):
+    processes = registry.settings.get('indexer.processes')
+    is_indexer = registry.settings.get('indexer')
+    is_vis_indexer = registry.settings.get('visindexer')
+    is_reg_indexer = registry.settings.get('regionindexer')
+    if is_vis_indexer or is_reg_indexer:
+        registry[INDEXER] = Indexer(registry)
+    elif is_indexer:
         available_queues = [DEFAULT_QUEUE]
         registry['available_queues'] = available_queues
         _update_for_uuid_queues(registry)
-        registry[INDEXER] = Indexer(registry)
+        if not processes:
+            print('signle indexer')
+            registry[INDEXER] = Indexer(registry)
 
 def get_related_uuids(request, es, updated, renamed):
     '''Returns (set of uuids, False) or (list of all uuids, True) if full reindex triggered'''
@@ -338,55 +346,57 @@ class Indexer(object):
         self.es = registry[ELASTIC_SEARCH]
         self.esstorage = registry[STORAGE]
         self.index = registry.settings['snovault.elasticsearch.index']
-        self.queue_server = None
-        self.queue_worker = None
-        self.worker_runs = []
-        available_queues = registry['available_queues']
-        queue_type = registry.settings.get('queue_type', None)
-        self.queue_type = queue_type
-        queue_name = registry.settings.get('queue_name', 'indxQ')
-        queue_host = registry.settings.get('queue_host', 'localhost')
-        queue_port = registry.settings.get('queue_port', 6379)
-        queue_db = registry.settings.get('queue_db', 2)
-        is_queue_server = asbool(registry.settings.get('queue_server'))
-        is_queue_worker = asbool(registry.settings.get('queue_worker'))
-        queue_worker_processes = int(
-            registry.settings.get('queue_worker_processes', 1)
-        )
-        queue_worker_chunk_size = int(
-            registry.settings.get('queue_worker_chunk_size', 1024)
-        )
-        queue_worker_batch_size = int(
-            registry.settings.get('queue_worker_batch_size', 1024)
-        )
-        self.chunk_size = queue_worker_chunk_size
-        self.batch_size = queue_worker_batch_size
-        queue_options = {
-            'processes': queue_worker_processes,
-            'chunk_size': queue_worker_chunk_size,
-            'batch_size': queue_worker_batch_size,
-            'queue_name': queue_name,
-            'host': queue_host,
-            'port': queue_port,
-            'db': queue_db,
-        }
-        if is_queue_server and queue_type in available_queues:
-            print('is queue server')
-            if not queue_type or queue_type == DEFAULT_QUEUE:
-                self.queue_server = SimpleUuidServer(queue_options)
-            elif 'UuidQueue' in registry:
-                queue_name = queue_options['queue_name']
-                queue_options['uuid_len'] = 36
-                self.queue_server = registry['UuidQueue'](
-                    queue_name,
-                    queue_type,
-                    queue_options,
-                )
-            else:
-                log.error('No queue available for Indexer')
-            if self.queue_server and is_queue_worker:
-                print('get worker')
-                self.queue_worker = self.queue_server.get_worker()
+        print(registry.settings.keys())
+        if registry.settings.get('indexer'):
+            self.queue_server = None
+            self.queue_worker = None
+            self.worker_runs = []
+            available_queues = registry['available_queues']
+            queue_type = registry.settings.get('queue_type', None)
+            self.queue_type = queue_type
+            queue_name = registry.settings.get('queue_name', 'indxQ')
+            queue_host = registry.settings.get('queue_host', 'localhost')
+            queue_port = registry.settings.get('queue_port', 6379)
+            queue_db = registry.settings.get('queue_db', 2)
+            is_queue_server = asbool(registry.settings.get('queue_server'))
+            is_queue_worker = asbool(registry.settings.get('queue_worker'))
+            queue_worker_processes = int(
+                registry.settings.get('queue_worker_processes', 1)
+            )
+            queue_worker_chunk_size = int(
+                registry.settings.get('queue_worker_chunk_size', 1024)
+            )
+            queue_worker_batch_size = int(
+                registry.settings.get('queue_worker_batch_size', 1024)
+            )
+            self.chunk_size = queue_worker_chunk_size
+            self.batch_size = queue_worker_batch_size
+            queue_options = {
+                'processes': queue_worker_processes,
+                'chunk_size': queue_worker_chunk_size,
+                'batch_size': queue_worker_batch_size,
+                'queue_name': queue_name,
+                'host': queue_host,
+                'port': queue_port,
+                'db': queue_db,
+            }
+            if is_queue_server and queue_type in available_queues:
+                print('is queue server')
+                if not queue_type or queue_type == DEFAULT_QUEUE:
+                    self.queue_server = SimpleUuidServer(queue_options)
+                elif 'UuidQueue' in registry:
+                    queue_name = queue_options['queue_name']
+                    queue_options['uuid_len'] = 36
+                    self.queue_server = registry['UuidQueue'](
+                        queue_name,
+                        queue_type,
+                        queue_options,
+                    )
+                else:
+                    log.error('No queue available for Indexer')
+                if self.queue_server and is_queue_worker:
+                    print('get worker')
+                    self.queue_worker = self.queue_server.get_worker()
 
     def serve_objects(
             self,

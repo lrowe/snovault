@@ -30,7 +30,9 @@ def includeme(config):
         processes = int(processes)
     except:
         processes = None
-    config.registry[INDEXER] = MPIndexer(config.registry, processes=processes)
+    if INDEXER not in config.registry:
+        print('multi')
+        config.registry[INDEXER] = MPIndexer(config.registry, processes=processes)
 
 
 # Running in subprocess
