@@ -65,10 +65,11 @@ def includeme(config):
     config.add_route('index', '/index')
     config.scan(__name__)
     registry = config.registry
-    available_queues = [DEFAULT_QUEUE]
-    registry['available_queues'] = available_queues
-    _update_for_uuid_queues(registry)
-    registry[INDEXER] = Indexer(registry)
+    if registry.settings.get('indexer'):
+        available_queues = [DEFAULT_QUEUE]
+        registry['available_queues'] = available_queues
+        _update_for_uuid_queues(registry)
+        registry[INDEXER] = Indexer(registry)
 
 def get_related_uuids(request, es, updated, renamed):
     '''Returns (set of uuids, False) or (list of all uuids, True) if full reindex triggered'''
