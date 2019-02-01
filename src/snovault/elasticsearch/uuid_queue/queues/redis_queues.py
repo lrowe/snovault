@@ -63,7 +63,7 @@ class RedisQueueMeta(BaseQueueMeta):
         self.queue_name = queue_name
         self._client = client
         self._setup_redis_keys()
-        restarts = self.get_server_restarts()
+        restarts = self._get_server_restarts()
         self.queue_name = queue_name + str(restarts)
         if not is_worker:
             self._qmeta.set_args()
