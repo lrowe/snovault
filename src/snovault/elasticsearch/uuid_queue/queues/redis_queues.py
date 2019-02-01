@@ -145,7 +145,7 @@ class RedisQueueMeta(BaseQueueMeta):
         """Save work results"""
         worker_conn = self._get_worker_conn(worker_id)
         results['errors'] = len(results['errors'])
-        self.update_success_count(results['successes'])
+        self.update_success_count(1)
         if worker_conn:
             results_count = int(worker_conn.get('results_count', 0))
             results_count += 1
@@ -213,7 +213,6 @@ class RedisQueueMeta(BaseQueueMeta):
         cs(successes count, int)-Number of uuids successfully processed
         ue(errors for uuid, hash)-Errors per uuid as a hash.  Set on indexing batch
         ce(errors count, int)-Number of all errors
-        running-boolean flag for running indexing process over current queue
         errors-list of uuids that had errors
         wi(worker ids, list)-List of worker connection ids
         wk(worker connection, Base)-Base key for worker connection hashes with worker id
@@ -233,7 +232,6 @@ class RedisQueueMeta(BaseQueueMeta):
         self._key_errors = self._key_metabase + ':errors'
         self._key_uuid_errors = self._key_metabase + ':ue'
         self._key_errorscount = self._key_metabase + ':ce'
-        self._key_isrunning = self._key_metabase + ':running'
         self._key_successescount = self._key_metabase + ':cs'
         # Worker Connections
         self._key_workers = self._key_metabase + ':wi'
@@ -245,7 +243,6 @@ class RedisQueueMeta(BaseQueueMeta):
         self._client.set(self._key_addedcount, 0)
         self._client.delete(self._key_errors)
         self._client.set(self._key_errorscount, 0)
-        self._client.set(self._key_isrunning, 'true')
         self._client.set(self._key_successescount, 0)
         # Worker Connections
         self._client.delete(self._key_workers)
