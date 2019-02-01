@@ -80,6 +80,7 @@ def includeme(config):
         if not processes:
             print('signle indexer')
             registry[INDEXER] = Indexer(registry)
+    print('end indexer include me')
 
 def get_related_uuids(request, es, updated, renamed):
     '''Returns (set of uuids, False) or (list of all uuids, True) if full reindex triggered'''
