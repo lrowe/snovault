@@ -14,7 +14,7 @@ REDIS_LIST_PIPE = 'REDIS_LIST_PIPE'
 REDIS_SET = 'REDIS_SET'
 REDIS_SET_PIPE = 'REDIS_SET_PIPE'
 REDIS_SET_PIPE_EXEC = 'REDIS_SET_PIPE_EXEC'
-
+PD_RESTARTS = 'pd:srvrs'
 
 # TODo: has_uuids failed becuase set_args was never called on init.  Tests did not catch this
 # TODo: new/updated so check tests: _get_worker_ids, get_worker_conn_count
@@ -58,11 +58,34 @@ class RedisQueueMeta(BaseQueueMeta):
 
     - Server and client(workers) use meta store in redis
     '''
-    def __init__(self, queue_name, client):
+    def __init__(self, queue_name, client, is_worker=False):
         self._base_id = int(time.time() * 1000000)
-        self._queue_name = queue_name
+        self.queue_name = queue_name
         self._client = client
         self._setup_redis_keys()
+        restarts = self.get_server_restarts()
+        self.queue_name = queue_name + str(restarts)
+        if not is_worker:
+            self._qmeta.set_args()
+            self._init_persistant()
+
+    # Persistant Server Data
+    def _init_persistant_data(self):
+        # persistant data : server restarts
+        self._client.incrby(PD_RESTARTS, 1)
+
+    def _get_server_restarts(self):
+        '''
+        Number of times server queue meta has been initialized
+        - Should be the number of times the server has started
+        '''
+        cnt = self._client.get(PD_RESTARTS)
+        if not cnt:
+            self._client.set(PD_RESTARTS, 0)
+            cnt = 0
+        else:
+            cnt = int(self._client.get(PD_RESTARTS))
+        return cnt
 
     # Errors
     def add_errors(self, errors):
@@ -219,12 +242,12 @@ class RedisQueueMeta(BaseQueueMeta):
         wr(worker results, base for hash)-Base key for worker results.  Conns can have
         mulitple results
         Ex)
-            if self._queue_name = 'testqueuename'
+            if self.queue_name = 'testqueuename'
             redis keys will look like
             self._key_addedcount = testqueuename:mb:ca
         """
         # pylint: disable=attribute-defined-outside-init
-        self._key_metabase = self._queue_name + ':mb'
+        self._key_metabase = self.queue_name + ':mb'
         self._key_runargs = self._key_metabase + ':ra'
         # Queue run info
         self._key_uuidcount = self._key_metabase + ':cu'
@@ -291,11 +314,13 @@ class RedisQueue(BaseQueue):
     queue_type = None
 
     def __init__(self, queue_name, client, is_worker=False):
-        self.queue_name = queue_name
         self._client = client
-        self._qmeta = RedisQueueMeta(self.queue_name, self._client)
-        if not is_worker:
-            self._qmeta.set_args()
+        self._qmeta = RedisQueueMeta(
+            queue_name,
+            self._client,
+            is_worker=is_worker
+        )
+        self.queue_name = self._qmeta.queue_name
 
     def _call_func(self, func_str, value=None):
         """

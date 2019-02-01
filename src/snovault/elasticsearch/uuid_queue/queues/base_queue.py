@@ -126,6 +126,11 @@ class BaseQueue(object):
         self._uuids = []
         self._qmeta = BaseQueueMeta()
 
+    # Persistant Data
+    def get_server_restarts(self):
+        '''Pass to queue meta get_server_restarts'''
+        return self._qmeta.get_server_restarts()
+
     # Errors
     def add_errors(self, worker_id, result_errors):
         """Add errors from results to queue meta through queue"""
