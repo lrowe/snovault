@@ -31,7 +31,6 @@ def includeme(config):
     except:
         processes = None
     if INDEXER not in config.registry:
-        print('multi')
         config.registry[INDEXER] = MPIndexer(config.registry, processes=processes)
 
 
@@ -184,12 +183,12 @@ class MPIndexer(Indexer):
             raise
         total_time = time.time() - start_time
         tasks_len = len(tasks)
-        self._print_update_infos(
-            update_infos,
-            total_time,
-            tasks_len,
-            chunkiness,
-        )
+        # self._print_update_infos(
+        #     update_infos,
+        #     total_time,
+        #     tasks_len,
+        #     chunkiness,
+        # )
         return errors
 
     def _print_update_infos(

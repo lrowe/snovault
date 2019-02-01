@@ -72,9 +72,7 @@ def includeme(config):
         registry['available_queues'] = available_queues
         _update_for_uuid_queues(registry)
         if not processes:
-            print('signle indexer')
             registry[INDEXER] = Indexer(registry)
-    print('end indexer include me')
 
 def get_related_uuids(request, es, updated, renamed):
     '''Returns (set of uuids, False) or (list of all uuids, True) if full reindex triggered'''
@@ -340,7 +338,6 @@ def get_current_xmin(request):
 
 class Indexer(object):
     def __init__(self, registry):
-        print('creating indexer')
         self.es = registry[ELASTIC_SEARCH]
         self.esstorage = registry[STORAGE]
         self.index = registry.settings['snovault.elasticsearch.index']
@@ -378,7 +375,6 @@ class Indexer(object):
                 'db': queue_db,
             }
             if is_queue_server and queue_type in available_queues:
-                print('is queue server')
                 if not queue_type or queue_type == DEFAULT_QUEUE:
                     self.queue_server = SimpleUuidServer(queue_options)
                 elif 'UuidQueue' in registry:
@@ -392,7 +388,6 @@ class Indexer(object):
                 else:
                     log.error('No queue available for Indexer')
                 if self.queue_server and is_queue_worker:
-                    print('get worker')
                     self.queue_worker = self.queue_server.get_worker()
 
     def serve_objects(
@@ -425,10 +420,10 @@ class Indexer(object):
                     )
                 )
         if err_msg is None:
-            # q_srv_meta = self.queue_server._queue._qmeta
-            # search_key = self.queue_server._queue_name + '*'
-            # for key in q_srv_meta._client.keys(search_key):
-            #     q_srv_meta._client.delete(key)
+            q_srv_meta = self.queue_server._queue._qmeta
+            search_key = self.queue_server._queue_name + '*'
+            for key in q_srv_meta._client.keys(search_key):
+                q_srv_meta._client.delete(key)
             start_time = time.time()
             self.worker_runs = []
             while self.queue_server.is_indexing():
