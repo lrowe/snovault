@@ -267,6 +267,7 @@ class WorkerAdapter(object):
             if get_all:
                 tmp_uuids = self._get_uuids()
                 while tmp_uuids:
+                    print('got uuids', len(tmp_uuids))
                     uuids.extend(tmp_uuids)
                     tmp_uuids = self._get_uuids()
             else:

@@ -408,6 +408,7 @@ class Indexer(object):
         elif not uuids:
             err_msg = 'No uuids given to Indexer.serve_objects'
         else:
+            print('loaded uuids', len(uuids))
             uuids_loaded_len = self.queue_server.load_uuids(uuids)
             if not uuids_loaded_len:
                 err_msg = 'Uuids given to Indexer.serve_objects failed to load'
