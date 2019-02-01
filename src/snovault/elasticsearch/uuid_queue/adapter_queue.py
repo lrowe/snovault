@@ -259,14 +259,20 @@ class WorkerAdapter(object):
                 uuids.extend(uncombined_uuids)
         return uuids
 
-    def get_uuids(self):
+    def get_uuids(self, get_all=False):
         '''Get uuids and update queue meta data'''
         self.get_cnt += 1
         uuids = []
         if self.uuid_cnt == 0:
-            uuids = self._get_uuids()
-            self.uuid_cnt = len(uuids)
-            self._queue.update_uuid_count(-1 * self.uuid_cnt)
+            if get_all:
+                tmp_uuids = self._get_uuids()
+                while tmp_uuids:
+                    uuids.extend(tmp_uuids)
+                    tmp_uuids = self._get_uuids()
+            else:
+                uuids = self._get_uuids()
+                self.uuid_cnt = len(uuids)
+                self._queue.update_uuid_count(-1 * self.uuid_cnt)
         self._queue.update_worker_conn(
             self.worker_id,
             self.uuid_cnt,
