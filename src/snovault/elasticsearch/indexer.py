@@ -71,6 +71,7 @@ def includeme(config):
     is_reg_indexer = registry.settings.get('regionindexer')
     print(is_indexer, is_vis_indexer, is_reg_indexer)
     if is_vis_indexer or is_reg_indexer:
+        print('reg or vis')
         registry[INDEXER] = Indexer(registry)
     elif is_indexer:
         available_queues = [DEFAULT_QUEUE]
