@@ -450,7 +450,8 @@ class Indexer(object):
 
     def run_worker(self, request, xmin, snapshot_id, restart):
         '''Run the uuid queue worker'''
-        batch_uuids = self.queue_worker.get_uuids()
+        batch_uuids = self.queue_worker.get_uuids(get_all=True)
+        print('run worker uuids', len(batch_uuids))
         log.warning(
             'running %s with %d',
             self.queue_worker.worker_id,
