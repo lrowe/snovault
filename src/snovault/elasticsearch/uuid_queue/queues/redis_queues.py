@@ -66,7 +66,7 @@ class RedisQueueMeta(BaseQueueMeta):
         restarts = self._get_server_restarts()
         self.queue_name = queue_name + str(restarts)
         if not is_worker:
-            self._qmeta.set_args()
+            self.set_args()
             self._init_persistant()
 
     # Persistant Server Data
