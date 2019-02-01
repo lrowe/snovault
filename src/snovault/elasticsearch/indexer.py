@@ -67,13 +67,7 @@ def includeme(config):
     registry = config.registry
     processes = registry.settings.get('indexer.processes')
     is_indexer = registry.settings.get('indexer')
-    is_vis_indexer = registry.settings.get('visindexer')
-    is_reg_indexer = registry.settings.get('regionindexer')
-    print(is_indexer, is_vis_indexer, is_reg_indexer)
-    if is_vis_indexer or is_reg_indexer:
-        print('reg or vis')
-        registry[INDEXER] = Indexer(registry)
-    elif is_indexer:
+    if is_indexer:
         available_queues = [DEFAULT_QUEUE]
         registry['available_queues'] = available_queues
         _update_for_uuid_queues(registry)
