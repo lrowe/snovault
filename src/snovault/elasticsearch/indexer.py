@@ -370,6 +370,7 @@ class Indexer(object):
             'db': queue_db,
         }
         if is_queue_server and queue_type in available_queues:
+            print('is queue server')
             if not queue_type or queue_type == DEFAULT_QUEUE:
                 self.queue_server = SimpleUuidServer(queue_options)
             elif 'UuidQueue' in registry:
@@ -383,6 +384,7 @@ class Indexer(object):
             else:
                 log.error('No queue available for Indexer')
             if self.queue_server and is_queue_worker:
+                print('get worker')
                 self.queue_worker = self.queue_server.get_worker()
 
     def serve_objects(
