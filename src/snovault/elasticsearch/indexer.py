@@ -525,20 +525,7 @@ class Indexer(object):
             'backoffs': {},
             'item_type': None,
         }
-        request.datastore = 'database'  # required by 2-step indexer
-
-        # OPTIONAL: restart support
-        # If a restart occurred in the middle of indexing, this uuid might have already been indexd, so skip redoing it.
-        # if restart:
-        #     try:
-        #         #if self.es.exists(index=self.index, id=str(uuid), version=xmin, version_type='external_gte'):  # couldn't get exists to work.
-        #         result = self.es.get(index=self.index, id=str(uuid), _source_include='uuid', version=xmin, version_type='external_gte')
-        #         if result.get('_source') is not None:
-        #             return
-        #     except:
-        #         pass
-        # OPTIONAL: restart support
-
+        request.datastore = 'database'
         last_exc = None
         req_info['start_time'] = time.time()
         backoff = 0
