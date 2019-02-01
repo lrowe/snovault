@@ -491,7 +491,7 @@ class Indexer(object):
         '''Run indexing process on uuids'''
         errors = []
         for i, uuid in enumerate(uuids):
-            update_info = self.update_object(request, uuid, xmin)
+            update_info = self.update_object(self.es, request, uuid, xmin)
             error = update_info['error']
             if error is not None:
                 errors.append(error)
@@ -500,7 +500,8 @@ class Indexer(object):
 
         return errors
 
-    def update_object(self, request, uuid, xmin, restart=False):
+    @staticmethod
+    def update_object(encoded_es, request, uuid, xmin, restart=False):
         update_info = {
             'uuid': uuid,
             'xmin': xmin,
@@ -573,7 +574,7 @@ class Indexer(object):
                     'error': None,
                 }
                 try:
-                    self.es.index(
+                    encoded_es.index(
                         index=doc['item_type'], doc_type=doc['item_type'], body=doc,
                         id=str(uuid), version=xmin, version_type='external_gte',
                         request_timeout=30,

@@ -17,7 +17,10 @@ from .indexer import (
     INDEXER,
     Indexer,
 )
-from .interfaces import APP_FACTORY
+from .interfaces import (
+    APP_FACTORY,
+    ELASTIC_SEARCH,
+)
 
 log = logging.getLogger('snovault.elasticsearch.es_index_listener')
 
@@ -105,14 +108,20 @@ def update_object_in_snapshot(args):
     uuid, xmin, snapshot_id, restart = args
     with snapshot(xmin, snapshot_id):
         request = get_current_request()
-        indexer = request.registry[INDEXER]
+        encoded_es = request.registry[ELASTIC_SEARCH]
         map_info = {
             'start_time': time.time(),
             'end_time': None,
             'run_time': None,
             'pid':os.getpid(),
         }
-        update_info = indexer.update_object(request, uuid, xmin, restart)
+        update_info = Indexer.update_object(
+            encoded_es,
+            request,
+            uuid,
+            xmin,
+            restart
+        )
         update_info['snapshot_id'] = snapshot_id
         map_info['end_time'] = time.time()
         map_info['run_time'] = map_info['end_time'] - map_info['start_time']
