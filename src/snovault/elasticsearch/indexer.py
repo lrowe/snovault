@@ -271,7 +271,7 @@ def index(request):
         result = state.start_cycle(invalidated, result)
 
         # Do the work...
-
+        print('starting serve objects')
         errors, err_msg = indexer.serve_objects(
             request,
             invalidated,
@@ -279,6 +279,7 @@ def index(request):
             snapshot_id=snapshot_id,
             restart=restart,
         )
+        print('over serve objects')
         if err_msg:
             log.warning('Could not start indexing: %s', err_msg)
         result = state.finish_cycle(result,errors)
@@ -421,10 +422,10 @@ class Indexer(object):
                     )
                 )
         if err_msg is None:
-            # q_srv_meta = self.queue_server._queue._qmeta
-            # search_key = 'indxQ*'
-            # for key in q_srv_meta._client.keys(search_key):
-            #     q_srv_meta._client.delete(key)
+            q_srv_meta = self.queue_server._queue._qmeta
+            search_key = 'indxQ*'
+            for key in q_srv_meta._client.keys(search_key):
+                q_srv_meta._client.delete(key)
             start_time = time.time()
             self.worker_runs = []
             while self.queue_server.is_indexing():
