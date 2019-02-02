@@ -251,6 +251,7 @@ class WorkerAdapter(object):
             uuids = self._queue.get_uuids(1)
         else:
             combined_uuids_list = self._queue.get_uuids(1)
+            print('_get uuids comb', len(combined_uuids_list))
             for combined_uuids in combined_uuids_list:
                 uncombined_uuids = self._get_uncombined_uuids(
                     self._queue_options['uuid_len'],

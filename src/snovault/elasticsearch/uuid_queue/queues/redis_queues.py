@@ -334,6 +334,7 @@ class RedisQueue(BaseQueue):
         try:
             if value:
                 return func(self.queue_name, value)
+            print('call func', self.queue_name)
             return func(self.queue_name)
         except ConnectionError:  # pylint: disable=undefined-variable
             return False
