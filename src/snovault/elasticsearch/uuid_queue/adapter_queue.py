@@ -263,9 +263,11 @@ class WorkerAdapter(object):
         '''Get uuids and update queue meta data'''
         self.get_cnt += 1
         uuids = []
+        print(self.uuid_cnt)
         if self.uuid_cnt == 0:
             if get_all:
                 tmp_uuids = self._get_uuids()
+                print('get all', len(tmp_uuids))
                 while tmp_uuids:
                     print('got uuids', len(tmp_uuids))
                     uuids.extend(tmp_uuids)
