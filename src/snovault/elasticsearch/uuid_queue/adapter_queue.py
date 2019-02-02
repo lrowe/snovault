@@ -101,6 +101,8 @@ class QueueAdapter(object):
         self.queue_id = str(self._start_us)
         self._queue = self._get_queue(queue_name)
         self._queue_name = self._queue.queue_name
+        print('srv adap', self._queue_name)
+        
 
     # Errors
     def _has_errors(self):
@@ -227,6 +229,7 @@ class WorkerAdapter(object):
     '''
     def __init__(self, queue_name, queue_options, worker_id, queue):
         self._queue_name = queue_name
+        print('wrk adap', self._queue_name)
         self._queue_options = queue_options
         self.worker_id = worker_id
         self._queue = queue

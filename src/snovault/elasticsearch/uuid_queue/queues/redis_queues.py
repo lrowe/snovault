@@ -65,8 +65,11 @@ class RedisQueueMeta(BaseQueueMeta):
         self.queue_name = queue_name + str(restarts)
         self._setup_redis_keys()
         if not is_worker:
+            print('srv qmeta', self.queue_name)
             self.set_args()
             self._init_persistant_data()
+        else:
+            print('wrk qmeta', self.queue_name)
 
     # Persistant Server Data
     def _init_persistant_data(self):
@@ -320,6 +323,10 @@ class RedisQueue(BaseQueue):
             is_worker=is_worker
         )
         self.queue_name = self._qmeta.queue_name
+        if is_worker:
+            print('wrk q', self.queue_name)
+        else:
+            print('srv q', self.queue_name)
 
     def _call_func(self, func_str, value=None):
         """
