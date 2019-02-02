@@ -289,7 +289,7 @@ class WorkerAdapter(object):
         '''Update server with batch results'''
         self._queue.update_success_count(batch_results['successes'])
         self._queue.update_errors_count(len(batch_results['errors']))
-        msg = self._queue.update_finished(self.worker_id, results)
+        msg = self._queue.update_finished(self.worker_id, batch_results)
         if msg == 'Okay':
             self.uuid_cnt = 0
             msg = None
