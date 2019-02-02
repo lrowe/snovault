@@ -422,10 +422,10 @@ class Indexer(object):
                     )
                 )
         if err_msg is None:
-            q_srv_meta = self.queue_server._queue._qmeta
-            search_key = 'indxQ*'
-            for key in q_srv_meta._client.keys(search_key):
-                q_srv_meta._client.delete(key)
+            # q_srv_meta = self.queue_server._queue._qmeta
+            # search_key = 'indxQ*'
+            # for key in q_srv_meta._client.keys(search_key):
+            #     q_srv_meta._client.delete(key)
             start_time = time.time()
             self.worker_runs = []
             while self.queue_server.is_indexing():
