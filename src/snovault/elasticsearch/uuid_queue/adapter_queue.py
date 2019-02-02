@@ -99,7 +99,7 @@ class QueueAdapter(object):
         self._queue_options = queue_options
         self._start_us = int(time.time() * 1000000)
         self.queue_id = str(self._start_us)
-        self._queue = self._get_queue()
+        self._queue = self._get_queue(queue_name)
         self._queue_name = self._queue.queue_name
 
     # Errors
@@ -124,7 +124,7 @@ class QueueAdapter(object):
             # server and worker queue point to same obj
             worker_queue = self._queue
         else:
-            worker_queue = self._get_queue(is_worker=True)
+            worker_queue = self._get_queue(self._queue_name, is_worker=True)
         return worker_queue
 
     def get_worker(self):
@@ -206,12 +206,12 @@ class QueueAdapter(object):
         return False
 
     # Queue Client
-    def _get_queue(self, is_worker=False):
+    def _get_queue(self, queue_name, is_worker=False):
         client_class = QueueTypes.get_queue_client_class(self._queue_type)
         if client_class:
             client = client_class(self._queue_options)
             return client.get_queue(
-                self._queue_name,
+                queue_name,
                 self._queue_type,
                 is_worker=is_worker,
             )
