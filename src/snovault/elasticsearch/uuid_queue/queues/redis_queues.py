@@ -60,7 +60,6 @@ class RedisQueueMeta(BaseQueueMeta):
     '''
     def __init__(self, queue_name, client, is_worker=False):
         self._base_id = int(time.time() * 1000000)
-        self.queue_name = queue_name
         self._client = client
         self._setup_redis_keys()
         restarts = self._get_server_restarts()

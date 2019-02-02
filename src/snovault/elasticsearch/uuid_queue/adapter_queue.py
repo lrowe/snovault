@@ -95,12 +95,12 @@ class QueueAdapter(object):
     Indexer to Queue Adapter / Manager
     """
     def __init__(self, queue_name, queue_type, queue_options):
-        self._queue_name = queue_name
         self._queue_type = queue_type
         self._queue_options = queue_options
         self._start_us = int(time.time() * 1000000)
         self.queue_id = str(self._start_us)
         self._queue = self._get_queue()
+        self._queue_name = self._queue.queue_name
 
     # Errors
     def _has_errors(self):
