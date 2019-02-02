@@ -261,7 +261,7 @@ def index(request):
     if invalidated and not dry_run:
         invalid = []
         for uuid in invalidated:
-            if len(invalid) < 100000:
+            if len(invalid) < 2000000:
                 invalid.append(uuid)
         invalidated = invalid
         if len(stage_for_followup) > 0:
