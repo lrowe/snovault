@@ -111,7 +111,7 @@ class BaseQueueMeta(object):
         '''
         Update successfully loaded and got values
         '''
-        if len_values > 0
+        if len_values > 0:
             self._added_count += len_values
         self._uuid_count += len_values
 
