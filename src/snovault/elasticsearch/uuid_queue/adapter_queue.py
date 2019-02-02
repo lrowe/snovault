@@ -285,7 +285,7 @@ class WorkerAdapter(object):
         return uuids
 
     # Run
-    def update_finished(self, results):
+    def update_finished(self, batch_results):
         '''Update server with batch results'''
         self._queue.update_success_count(batch_results['successes'])
         self._queue.update_errors_count(len(batch_results['errors']))
