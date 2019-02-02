@@ -105,7 +105,6 @@ class RedisQueueMeta(BaseQueueMeta):
             self._client.hmset(error_key, error)
             self._client.lpush(self._key_errors, err_uuid)
             errors_added += 1
-        self._client.incrby(self._key_errorscount, errors_added)
         return errors_added
 
     def has_errors(self):
@@ -172,7 +171,6 @@ class RedisQueueMeta(BaseQueueMeta):
         """Save work results"""
         worker_conn = self._get_worker_conn(worker_id)
         results['errors'] = len(results['errors'])
-        self.update_success_count(1)
         if worker_conn:
             results_count = int(worker_conn.get('results_count', 0))
             results_count += 1
@@ -206,27 +204,23 @@ class RedisQueueMeta(BaseQueueMeta):
         cnt = added_cnt - (success_cnt + errors_cnt)
         return cnt > 0
 
-    def update_added_count(self, len_values):
-        '''
-        Update added uuid count
-        - start number of uuids
-        '''
-        self._client.incrby(self._key_addedcount, len_values)
-
-    def update_success_count(self, len_values):
-        '''
-        Update successful uuid count
-        - start number of uuids
-        '''
-        self._client.incrby(self._key_successescount, len_values)
-
     def update_uuid_count(self, len_values):
         '''
-        Update uuid count
+        Update uuid count, total added and current left
         - Added when loading uuids
         - Subtracted when getting uuids
         '''
+        if len_values > 0:
+            self._client.incrby(self._key_addedcount, len_values)
         self._client.incrby(self._key_uuidcount, len_values)
+
+    def update_success_count(self, len_values):
+        '''Update successfully indexed uuids'''
+        self._client.incrby(self._key_successescount, len_values)
+
+    def update_errors_count(self, len_values):
+        '''Update errors for indexed uuids'''
+        self._client.incrby(self._key_errorscount, len_values)
 
     # Run Args
     def _setup_redis_keys(self):
@@ -236,7 +230,7 @@ class RedisQueueMeta(BaseQueueMeta):
         mb(metabase)-Base key for storing values
         ra(runargs, hash?)-Queue needs to store run args for remote workers
         cu(uuids count, int)-Current number of uuids to index
-        ca(added count, int)-Number of uuids in queue
+        ca(added count, int)-Total Number of uuids in indexing session
         cs(successes count, int)-Number of uuids successfully processed
         ue(errors for uuid, hash)-Errors per uuid as a hash.  Set on indexing batch
         ce(errors count, int)-Number of all errors
@@ -268,6 +262,7 @@ class RedisQueueMeta(BaseQueueMeta):
     def set_args(self):
         """Initialize indexing run args"""
         self._client.set(self._key_addedcount, 0)
+        self._client.set(self._key_uuidcount, 0)
         self._client.delete(self._key_errors)
         self._client.set(self._key_errorscount, 0)
         self._client.set(self._key_successescount, 0)
@@ -357,7 +352,6 @@ class RedisQueue(BaseQueue):
 
     def _load_uuid(self, uuid):
         if self._call_func(self.add_str, uuid):
-            self._qmeta.update_added_count(1)
             return True
         return False
 

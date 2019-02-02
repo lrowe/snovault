@@ -267,19 +267,16 @@ class WorkerAdapter(object):
         '''Get uuids and update queue meta data'''
         self.get_cnt += 1
         uuids = []
-        print(self.uuid_cnt)
         if self.uuid_cnt == 0:
             if get_all:
                 tmp_uuids = self._get_uuids()
-                print('get all', len(tmp_uuids))
                 while tmp_uuids:
-                    print('got uuids', len(tmp_uuids))
                     uuids.extend(tmp_uuids)
                     tmp_uuids = self._get_uuids()
             else:
                 uuids = self._get_uuids()
-                self.uuid_cnt = len(uuids)
-                self._queue.update_uuid_count(-1 * self.uuid_cnt)
+            self.uuid_cnt = len(uuids)
+            self._queue.update_uuid_count(-1 * self.uuid_cnt)
         self._queue.update_worker_conn(
             self.worker_id,
             self.uuid_cnt,
@@ -290,6 +287,8 @@ class WorkerAdapter(object):
     # Run
     def update_finished(self, results):
         '''Update server with batch results'''
+        self._queue.update_success_count(batch_results['successes'])
+        self._queue.update_errors_count(len(batch_results['errors']))
         msg = self._queue.update_finished(self.worker_id, results)
         if msg == 'Okay':
             self.uuid_cnt = 0

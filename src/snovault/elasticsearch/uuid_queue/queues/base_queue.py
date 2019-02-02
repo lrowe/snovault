@@ -43,7 +43,10 @@ class BaseQueueMeta(object):
     def __init__(self):
         self._base_id = int(time.time() * 1000000)
         self._errors = []
+        self._errors_count = 0
         self._uuid_count = 0
+        self._added_count = 0
+        self._success_count = 0
         self._worker_conns = {}
         self._worker_results = {}
 
@@ -106,10 +109,19 @@ class BaseQueueMeta(object):
 
     def update_uuid_count(self, len_values):
         '''
-        Update successfully added values
-        - Also used to remove readded uuids
+        Update successfully loaded and got values
         '''
+        if len_values > 0
+            self._added_count += len_values
         self._uuid_count += len_values
+
+    def update_success_count(self, len_values):
+        '''Update successfully indexed uuids'''
+        self._success_count += len_values
+
+    def update_errors_count(self, len_values):
+        '''Update errors for indexed uuids'''
+        self._errors_count += len_values
 
 
 class BaseQueue(object):
@@ -174,9 +186,17 @@ class BaseQueue(object):
         """Return Queue Meta has uuids"""
         return self._qmeta.has_uuids()
 
-    def update_uuid_count(self, success_cnt):
+    def update_uuid_count(self, len_values):
         """Return Queue Meta update uuid count"""
-        return self._qmeta.update_uuid_count(success_cnt)
+        return self._qmeta.update_uuid_count(len_values)
+
+    def update_success_count(self, len_values):
+        """Return Queue Meta success uuid count"""
+        return self._qmeta.update_success_count(len_values)
+    
+    def update_errors_count(self, len_values):
+        """Return Queue Meta errors uuid count"""
+        return self._qmeta.update_errors_count(len_values)
 
     def _get_uuid(self):
         if self._uuids:
