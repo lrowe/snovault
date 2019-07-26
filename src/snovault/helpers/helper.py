@@ -471,11 +471,6 @@ def format_results(request, hits, result=None):
                     item['highlight'][key[9:]] = list(set(hit['highlight'][key]))
             yield item
 
-    # After all are yielded, it may not be too late to change this result setting
-    #if not any_released and result is not None and 'batch_hub' in result:
-    #    del result['batch_hub']
-    if not any_released and result is not None and 'visualize_batch' in result:
-        del result['visualize_batch']
 
 def normalize_query(request):
     types = request.registry[TYPES]
