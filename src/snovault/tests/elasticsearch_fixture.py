@@ -7,7 +7,7 @@ except ImportError:
     import subprocess
 
 
-def server_process(datadir, host='127.0.0.1', port=9201, prefix='', echo=False):
+def server_process(datadir, host='127.0.0.1', port=9200, prefix='', echo=False):
     args = [
         os.path.join(prefix, 'elasticsearch'),
         '-Enetwork.host=%s' % host,
@@ -18,10 +18,6 @@ def server_process(datadir, host='127.0.0.1', port=9201, prefix='', echo=False):
     if os.environ.get('TRAVIS'):
         print('IN TRAVIS')
         echo=True
-    elif os.path.exists('/etc/elasticsearch'):
-        print('NOT IN TRAVIS')
-        args.append('-Epath.conf=/etc/elasticsearch')
-    print(args)
     process = subprocess.Popen(
         args,
         close_fds=True,

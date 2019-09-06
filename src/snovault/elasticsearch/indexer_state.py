@@ -179,7 +179,7 @@ class IndexerState(object):
         if requested == 'all':
             self._set_is_reindex()
             if self.title == 'primary':  # If primary indexer delete the original master obj
-                self.delete_objs(["indexing"])  # http://localhost:9201/snovault/meta/indexing
+                self.delete_objs(["indexing"])  # http://localhost:9200/snovault/meta/indexing
             else:
                 self.put_obj(self.override, {self.title : 'reindex', 'all_uuids': True})
 
@@ -253,7 +253,7 @@ class IndexerState(object):
         '''Initial startup, reindex, or interupted prior cycle can all lead to a priority cycle.
            returns (discovered xmin, uuids, whether previous cycle was interupted).'''
         # Not yet started?
-        initialized = self.get_obj("indexing")  # http://localhost:9201/snovault/meta/indexing
+        initialized = self.get_obj("indexing")  # http://localhost:9200/snovault/meta/indexing
         self.is_reindexing = self._get_is_reindex()
         if not initialized:
             self.is_initial_indexing = True
