@@ -83,8 +83,6 @@ def main():
     nginx = nginx_server_process(echo=True)
     processes = [postgres, elasticsearch, nginx]
 
-    print_processes = []
-
     @atexit.register
     def cleanup_process():
         for process in processes:
@@ -97,8 +95,6 @@ def main():
             except IOError:
                 pass
             process.wait()
-        for p in print_processes:
-            p.terminate()
 
     if args.init:
         app = get_app(args.config_uri, args.app_name)
@@ -114,19 +110,13 @@ def main():
 
     stdouts = [p.stdout for p in processes]
 
-    def print_to_terminal(stdout):
-        while True:
-            for line in iter(stdout.readline, b''):
-                sys.stdout.write(line.decode('utf-8'))
-
-
-    readable, writable, err = select.select(stdouts, [], stdouts, 5)
-    for stdout in readable:
-        print_processes.append(Process(target=print_to_terminal, args=(stdout,)))
-    for stdout in err:
-        print_processes.append(Process(target=print_to_terminal, args=(stdout,)))
-    for p in print_processes:
-        p.start()
+    # readline() is blocking but subprocesses mostly write complete lines.
+    while True:
+        readable, writable, err = select.select(stdouts, [], [])
+        if not readable:
+            break
+        for stdout in readable:
+            sys.stdout.write(stdout.readline().decode('utf-8'))
 
 if __name__ == '__main__':
     main()
